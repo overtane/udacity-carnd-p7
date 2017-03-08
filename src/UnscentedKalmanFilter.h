@@ -1,14 +1,14 @@
-#ifndef UKF_H
-#define UKF_H
+#ifndef UNSCENTED_KALMAN_FILTER_H_
+#define UNSCENTED_KALMAN_FILTER_H_
 #include "Eigen/Dense"
-#include "measurement_package.h"
-#include "ground_truth_package.h"
-#include <vector>
+#include "MeasurementPackage.h"
+#include "GroundTruthPackage.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
-class UKF {
+class UnscentedKalmanFilter {
+
 public:
 
   ///* initially set to false, set to true in first call of ProcessMeasurement
@@ -71,15 +71,18 @@ public:
   ///* the current NIS for laser
   double NIS_laser_;
 
+  ///* previous measurement
+  long previous_timestamp_;
+
   /**
    * Constructor
    */
-  UKF();
+  UnscentedKalmanFilter();
 
   /**
    * Destructor
    */
-  virtual ~UKF();
+  virtual ~UnscentedKalmanFilter();
 
   /**
    * ProcessMeasurement
@@ -106,6 +109,23 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+
+
+private:
+
+    void GenerateSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_out);
+      
+    void GenerateAugmentedSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_aug);
+        
+    void SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixXd &Xsig_pred);
+	  
+    void PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd &x, MatrixXd &P);
+	   
+    void PredictRadarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S);
+	     
+    void UpdateState(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S, 
+		     const MatrixXd &Zsig, const MatrixXd &Xsig_pred, 
+		     VectorXd &x, MatrixXd &P);
 };
 
-#endif /* UKF_H */
+#endif /* UNSCENTED_KALMAN_FILTER_H_ */

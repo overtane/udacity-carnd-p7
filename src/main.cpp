@@ -2,9 +2,9 @@
 #include <iostream>
 #include "Eigen/Dense"
 #include <vector>
-#include "ukf.h"
-#include "measurement_package.h"
-#include "ground_truth_package.h"
+#include "UnscentedKalmanFilter.h"
+#include "MeasurementPackage.h"
+#include "GroundTruthPackage.h"
 #include <fstream>
 #include <sstream>
 #include <stdlib.h>
@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Create a UKF instance
-  UKF ukf;
+  UnscentedKalmanFilter ukf;
 
   size_t number_of_measurements = measurement_pack_list.size();
 
