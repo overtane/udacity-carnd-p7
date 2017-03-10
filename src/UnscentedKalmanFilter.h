@@ -59,6 +59,8 @@ public:
   ///* State dimension
   int n_x_;
 
+  int n_sigma_;
+
   ///* Augmented state dimension
   int n_aug_;
 
@@ -121,6 +123,8 @@ private:
 	  
     void PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd &x, MatrixXd &P);
 	   
+    void PredictLidarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Ysig, VectorXd &y_pred, MatrixXd &S);
+	     
     void PredictRadarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S);
 	     
     void UpdateState(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S, 
