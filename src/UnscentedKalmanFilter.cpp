@@ -1,5 +1,6 @@
 #include <iostream>
 #include "UnscentedKalmanFilter.h"
+#include "Tools.h"
 
 
 static double norm_angle(double a) {
@@ -29,10 +30,10 @@ UnscentedKalmanFilter::UnscentedKalmanFilter() {
         0, 1,    0,      0, 0,
 	0, 0, 1000,      0, 0,
 	0, 0,    0, M_PI/4, 0,
-	0, 0,    0,      0, 100;
+	0, 0,    0,      0, M_PI/8;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 5; 
+  std_a_ = 3; 
 
   // Process noise standard deviation yaw acceleration in rad/s^2
   std_yawdd_ = .5; 
@@ -76,7 +77,7 @@ UnscentedKalmanFilter::~UnscentedKalmanFilter() {}
  * @param {MeasurementPackage} mpage The latest measurement data of
  * either radar or laser.
  */
-void UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
+double UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
   /*****************************************************************************
    *  Initialization
    ****************************************************************************/
@@ -98,7 +99,7 @@ void UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
     } else {
       std::cout << "Invalid sensor type" << std::endl;
     }
-    return;
+    return 0.0;
   }
 
   /*****************************************************************************
@@ -110,9 +111,9 @@ void UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
   
   // skip prediction, if measurement has (about) the same timestamp as previous
   // timestamps are microseconds
-  //if (mp.timestamp_ > previous_timestamp_)
+  //if (mp.timestamp_ > previous_timestamp_) {
   //  dt = 1.0;
-  //else 
+  //} else 
   //  dt = 0.0;
       
   Prediction(dt);
@@ -122,14 +123,18 @@ void UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
    *  Update
    ****************************************************************************/
 
+  double nis = 0.0; 
+
   if (mp.sensor_type_ == MeasurementPackage::RADAR) {
     
-    UpdateRadar(mp);
+    nis = UpdateRadar(mp);
 
   } else if (mp.sensor_type_ == MeasurementPackage::LASER) {
 
-    UpdateLidar(mp);
+    nis = UpdateLidar(mp);
   }
+
+  return nis;
 }
 
 /**
@@ -137,66 +142,52 @@ void UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
  * @param {double} delta_t the change in time (in seconds) between the last
  * measurement and this one.
  */
-bool UnscentedKalmanFilter::Prediction(double delta_t) {
+void UnscentedKalmanFilter::Prediction(double delta_t) {
 
-     MatrixXd Xsig_aug(n_aug_, n_sigma_);
+    MatrixXd Xsig_aug(n_aug_, n_sigma_);
  
-  if (GenerateAugmentedSigmaPoints(x_, P_, Xsig_aug)) {
+    GenerateAugmentedSigmaPoints(x_, P_, Xsig_aug);
   
-      // store the last valid measured state
-      x_prev_ = x_;
-      P_prev_ = P_;
-      ts_prev_ = previous_timestamp_;
-      Xsig_aug_prev_ = Xsig_aug;
-
-      //std::cout << "Xsig_aug:" << Xsig_aug << std::endl;
-      SigmaPointPrediction(delta_t, Xsig_aug, Xsig_pred_);
-      //std::cout << "Xsig_pred:" << Xsig_pred_ << std::endl;
-
-      PredictMeanAndCovariance(Xsig_pred_, x_, P_);
-      //std::cout << "x:" << x_.transpose() << std::endl;
-      //std::cout << "P:" << P_ << std::endl;
-      return true;
-  } else
-      return false;
-}
-
-void UnscentedKalmanFilter::Prediction(double delta_t, MatrixXd Xsig_aug) {
-
     SigmaPointPrediction(delta_t, Xsig_aug, Xsig_pred_);
     //std::cout << "Xsig_pred:" << Xsig_pred_ << std::endl;
   
     PredictMeanAndCovariance(Xsig_pred_, x_, P_);
-    std::cout << "x:" << x_.transpose() << std::endl;
-    std::cout << "P:" << P_ << std::endl;
+    //std::cout << "x:" << x_.transpose() << std::endl;
+    //std::cout << "P:" << P_ << std::endl;
 }
 
 /**
  * Updates the state and the state covariance matrix using a laser measurement.
  * @param {MeasurementPackage} mpage
  */
-void UnscentedKalmanFilter::UpdateLidar(MeasurementPackage mp) {
+double UnscentedKalmanFilter::UpdateLidar(MeasurementPackage mp) {
 
-  int n_y = mp.raw_measurements_.rows();
+  VectorXd y = mp.raw_measurements_;
+
+  int n_y = y.rows();
 
   VectorXd y_pred(n_y);
   MatrixXd S(n_y,n_y);
   MatrixXd Ysig(n_y, n_sigma_);
 
   PredictLidarMeasurement(Xsig_pred_, Ysig, y_pred, S);
-  UpdateState(mp.raw_measurements_, y_pred, S, Xsig_pred_, Ysig, x_, P_);
+  UpdateState(y, y_pred, S, Xsig_pred_, Ysig, x_, P_);
+  
   //std::cout << "x:" << x_.transpose() << std::endl;
   //std::cout << "P:" << P_ << std::endl;
-  // TODO You'll also need to calculate the lidar NIS.
+
+  return Tools::NIS(y, y_pred, S);
 }
 
 /**
  * Updates the state and the state covariance matrix using a radar measurement.
  * @param {MeasurementPackage} mpage
  */
-void UnscentedKalmanFilter::UpdateRadar(MeasurementPackage mp) {
+double UnscentedKalmanFilter::UpdateRadar(MeasurementPackage mp) {
 
-  int n_z = mp.raw_measurements_.rows();
+  VectorXd z = mp.raw_measurements_;
+
+  int n_z = z.rows();
 
   VectorXd z_pred(n_z);
   MatrixXd S(n_z,n_z);
@@ -209,7 +200,7 @@ void UnscentedKalmanFilter::UpdateRadar(MeasurementPackage mp) {
   //std::cout << "x:" << x_.transpose() << std::endl;
   //std::cout << "P:" << P_ << std::endl;
   
-  // TODO You'll also need to calculate the radar NIS.
+  return Tools::NIS(z, z_pred, S);
 }
 
 void UnscentedKalmanFilter::GenerateSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig) {
@@ -275,10 +266,15 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
 	double s = sqrt(lambda_+n_aug_);
 
         for (int i=0; i<n_aug_; i++) {
-            Xsig_aug.col(i+1)        = x_aug + s * L.col(i);
-            Xsig_aug.col(i+1+n_aug_) = x_aug - s * L.col(i);
-            //Xsig_aug(3,i+1) = norm_angle(Xsig_aug(3,i+1));
-            //Xsig_aug(3,i+1+n_aug_) = norm_angle(Xsig_aug(3,i+1+n_aug_));
+	    int j = i+1;
+	    int k = j+n_aug_;
+            Xsig_aug.col(j) = x_aug + s * L.col(i);
+            Xsig_aug.col(k) = x_aug - s * L.col(i);
+	    // normalize
+            Xsig_aug(3,j)   = norm_angle(Xsig_aug(3,j));
+            Xsig_aug(3,k)   = norm_angle(Xsig_aug(3,k));
+            Xsig_aug(4,j)   = norm_angle(Xsig_aug(4,j));
+            Xsig_aug(4,k)   = norm_angle(Xsig_aug(4,k));
         }
     //}
 
@@ -320,9 +316,9 @@ void UnscentedKalmanFilter::SigmaPointPrediction(double delta_t, const MatrixXd 
     v_p = v_p + nua*delta_t;
 
     yaw_p = yaw_p + 0.5*nuyawdd*dts;
-    //yaw_p = norm_angle(yaw_p);
+    yaw_p = norm_angle(yaw_p);
     yawd_p = yawd_p + nuyawdd*delta_t;
-    //yawd_p = norm_angle(yawd_p);
+    yawd_p = norm_angle(yawd_p);
 
     // write predicted sigma point into right column
     Xsig_pred(0,i) = px_p;
@@ -486,9 +482,9 @@ void UnscentedKalmanFilter::PredictRadarMeasurement(const MatrixXd &Xsig_pred, M
 
     S = S + R;
 
-    //for (int i=0; i<S.cols(); i++) {
-    //    S(1,i) = norm_angle(S(1,i));
-    //}
+    for (int i=0; i<S.cols(); i++) {
+        S(1,i) = norm_angle(S(1,i));
+    }
 }
  
 void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S, 
@@ -518,10 +514,10 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
        Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
    }
 
-   //for (int i=0; i<Tc.cols(); i++) {
-//	   P(3,i) = norm_angle(P(3,i));
-//	   P(4,i) = norm_angle(P(4,i));
-//   }
+   for (int i=0; i<Tc.cols(); i++) {
+   	   Tc(3,i) = norm_angle(Tc(3,i));
+   	   Tc(4,i) = norm_angle(Tc(4,i));
+   }
 
    // Kalman gain K;
    MatrixXd K = Tc * S.inverse();

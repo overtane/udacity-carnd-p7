@@ -5,6 +5,11 @@ Tools::Tools() {}
 
 Tools::~Tools() {}
 
+double Tools::NIS(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S) {
+  VectorXd z_diff = z - z_pred;
+  return z_diff.transpose() * S.inverse() * z_diff;
+}
+
 VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
                               const vector<VectorXd> &ground_truth) {
 

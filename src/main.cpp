@@ -141,7 +141,7 @@ int main(int argc, char* argv[]) {
     gt_pack_list.push_back(gt_package);
 
     n_meas++;
-    //if (n_meas >= 9) break;
+    //if (n_meas >= 94) break;
   }
 
   // Create a UKF instance
@@ -158,14 +158,15 @@ int main(int argc, char* argv[]) {
   // frame)
   for (size_t k = 0; k < number_of_measurements; ++k) {
     // Call the UKF-based fusion
-    std::cout << k << std::endl;
-    ukf.ProcessMeasurement(measurement_pack_list[k]);
+    //std::cout << k << std::endl;
+    double nis = ukf.ProcessMeasurement(measurement_pack_list[k]);
 
     // output the estimation
+    out_file_ << nis << "\t"; // nis
     out_file_ << ukf.x_(0) << "\t"; // pos1 - est
     out_file_ << ukf.x_(1) << "\t"; // pos2 - est
-    out_file_ << ukf.x_(2) * cos(ukf.x_(3)) << "\t";
-    out_file_ << ukf.x_(2) * sin(ukf.x_(3)) << "\t";
+    out_file_ << ukf.x_(2) * cos(ukf.x_(3)) << "\t"; // vel1
+    out_file_ << ukf.x_(2) * sin(ukf.x_(3)) << "\t"; // vel2
     //out_file_ << ukf.x_(2) << "\t"; // vel_abs -est
     //out_file_ << ukf.x_(3) << "\t"; // yaw_angle -est
     //out_file_ << ukf.x_(4) << "\t"; // yaw_rate -est
@@ -198,8 +199,7 @@ int main(int argc, char* argv[]) {
   }
 
   // compute the accuracy (RMSE)
-  Tools tools;
-  cout << "Accuracy - RMSE:" << endl << tools.CalculateRMSE(estimations, ground_truth) << endl;
+  cout << "Accuracy - RMSE:" << endl << Tools::CalculateRMSE(estimations, ground_truth) << endl;
 
   // close files
   if (out_file_.is_open()) {

@@ -19,15 +19,16 @@ public:
   */
   virtual ~Tools();
 
+  static double NIS(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S);
   /**
   * A helper method to calculate RMSE.
   */
-  VectorXd CalculateRMSE(const vector<VectorXd> &estimations, const vector<VectorXd> &ground_truth);
+  static VectorXd CalculateRMSE(const vector<VectorXd> &estimations, const vector<VectorXd> &ground_truth);
 
   /**
   * A helper method to calculate Jacobians.
   */
-  MatrixXd CalculateJacobian(const VectorXd& x_state);
+  static MatrixXd CalculateJacobian(const VectorXd& x_state);
 
 };
 

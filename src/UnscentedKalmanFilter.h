@@ -97,30 +97,29 @@ public:
    * @param meas_package The latest measurement data of either radar or laser
    * @param gt_package The ground truth of the state x at measurement time
    */
-  void ProcessMeasurement(MeasurementPackage meas_package);
+  double ProcessMeasurement(MeasurementPackage meas_package);
+
+
+private:
 
   /**
    * Prediction Predicts sigma points, the state, and the state covariance
    * matrix
    * @param delta_t Time between k and k+1 in s
    */
-  bool Prediction(double delta_t);
-  void Prediction(double delta_t, MatrixXd Xsig_aug);
+  void Prediction(double delta_t);
 
   /**
    * Updates the state and the state covariance matrix using a laser measurement
    * @param meas_package The measurement at k+1
    */
-  void UpdateLidar(MeasurementPackage meas_package);
+  double UpdateLidar(MeasurementPackage meas_package);
 
   /**
    * Updates the state and the state covariance matrix using a radar measurement
    * @param meas_package The measurement at k+1
    */
-  void UpdateRadar(MeasurementPackage meas_package);
-
-
-private:
+  double UpdateRadar(MeasurementPackage meas_package);
 
     void GenerateSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_out);
       
