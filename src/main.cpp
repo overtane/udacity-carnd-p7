@@ -71,6 +71,8 @@ int main(int argc, char* argv[]) {
   vector<GroundTruthPackage> gt_pack_list;
   string line;
 
+  bool lidar_data = true; 
+  bool radar_data = true;
   int n_meas = 0;
 
   // prep the measurement packages (each line represents a measurement at a
@@ -86,7 +88,8 @@ int main(int argc, char* argv[]) {
 
     if (sensor_type.compare("L") == 0) {
       // laser measurement
-      //continue;
+      if (!lidar_data)
+          continue;
 
       // read measurements at this timestamp
       meas_package.sensor_type_ = MeasurementPackage::LASER;
@@ -104,19 +107,20 @@ int main(int argc, char* argv[]) {
 
     } else if (sensor_type.compare("R") == 0) {
       // radar measurement
-
+      if (!radar_data)
+          continue;
       // read measurements at this timestamp
       meas_package.sensor_type_ = MeasurementPackage::RADAR;
       meas_package.raw_measurements_ = VectorXd(3);
-      float ro;
+      float rho;
       float theta;
-      float ro_dot;
+      float rho_dot;
 
-      iss >> ro;
+      iss >> rho;
       iss >> theta;
-      iss >> ro_dot;
+      iss >> rho_dot;
 
-      meas_package.raw_measurements_ << ro, theta, ro_dot;
+      meas_package.raw_measurements_ << rho, theta, rho_dot;
 
       iss >> timestamp;
       meas_package.timestamp_ = timestamp;
@@ -137,7 +141,7 @@ int main(int argc, char* argv[]) {
     gt_pack_list.push_back(gt_package);
 
     n_meas++;
-    if (n_meas >= 11) break;
+    //if (n_meas >= 9) break;
   }
 
   // Create a UKF instance
@@ -160,9 +164,11 @@ int main(int argc, char* argv[]) {
     // output the estimation
     out_file_ << ukf.x_(0) << "\t"; // pos1 - est
     out_file_ << ukf.x_(1) << "\t"; // pos2 - est
-    out_file_ << ukf.x_(2) << "\t"; // vel_abs -est
-    out_file_ << ukf.x_(3) << "\t"; // yaw_angle -est
-    out_file_ << ukf.x_(4) << "\t"; // yaw_rate -est
+    out_file_ << ukf.x_(2) * cos(ukf.x_(3)) << "\t";
+    out_file_ << ukf.x_(2) * sin(ukf.x_(3)) << "\t";
+    //out_file_ << ukf.x_(2) << "\t"; // vel_abs -est
+    //out_file_ << ukf.x_(3) << "\t"; // yaw_angle -est
+    //out_file_ << ukf.x_(4) << "\t"; // yaw_rate -est
 
     // output the measurements
     if (measurement_pack_list[k].sensor_type_ == MeasurementPackage::LASER) {
@@ -173,10 +179,10 @@ int main(int argc, char* argv[]) {
       out_file_ << measurement_pack_list[k].raw_measurements_(1) << "\t";
     } else if (measurement_pack_list[k].sensor_type_ == MeasurementPackage::RADAR) {
       // output the estimation in the cartesian coordinates
-      float ro = measurement_pack_list[k].raw_measurements_(0);
+      float rho = measurement_pack_list[k].raw_measurements_(0);
       float phi = measurement_pack_list[k].raw_measurements_(1);
-      out_file_ << ro * cos(phi) << "\t"; // p1_meas
-      out_file_ << ro * sin(phi) << "\t"; // p2_meas
+      out_file_ << rho * cos(phi) << "\t"; // p1_meas
+      out_file_ << rho * sin(phi) << "\t"; // p2_meas
     }
 
     // output the ground truth packages
@@ -186,7 +192,7 @@ int main(int argc, char* argv[]) {
     out_file_ << gt_pack_list[k].gt_values_(3) << "\n";
   
     VectorXd x(4);
-    x << ukf.x_(0), ukf.x_(1),ukf.x_(2), ukf.x_(3); // TODO: vx and vy
+    x << ukf.x_(0), ukf.x_(1),ukf.x_(2)*cos(ukf.x_(3)), ukf.x_(2)*sin(ukf.x_(3)); // TODO: vx and vy
     estimations.push_back(x);
     ground_truth.push_back(gt_pack_list[k].gt_values_);
   }

@@ -26,6 +26,12 @@ public:
   ///* state covariance matrix
   MatrixXd P_;
 
+  ///* last valid state
+  VectorXd x_prev_;
+  MatrixXd P_prev_;
+  MatrixXd Xsig_aug_prev_;
+  long ts_prev_;
+
   ///* predicted sigma points matrix
   MatrixXd Xsig_pred_;
 
@@ -98,7 +104,8 @@ public:
    * matrix
    * @param delta_t Time between k and k+1 in s
    */
-  void Prediction(double delta_t);
+  bool Prediction(double delta_t);
+  void Prediction(double delta_t, MatrixXd Xsig_aug);
 
   /**
    * Updates the state and the state covariance matrix using a laser measurement
@@ -117,7 +124,7 @@ private:
 
     void GenerateSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_out);
       
-    void GenerateAugmentedSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_aug);
+    bool GenerateAugmentedSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_aug);
         
     void SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixXd &Xsig_pred);
 	  
