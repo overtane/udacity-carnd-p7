@@ -1,13 +1,15 @@
 #include <iostream>
+#include <math.h>
 #include "UnscentedKalmanFilter.h"
 #include "Tools.h"
 
 
 static double norm_angle(double a) {
     static const double PI2 = 2.*M_PI;
-    return a - ceil((a-M_PI)/(PI2))*PI2;
+    a = fmod(a,PI2); // force between [0, 2*PI)
+    return (a > M_PI) ? a - PI2 : a; // [-PI, PI)
+    //return a - ceil((a-M_PI)/(PI2))*PI2;
 }	
-
 /**
  * Initializes Unscented Kalman filter
  */
@@ -271,10 +273,10 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
             Xsig_aug.col(j) = x_aug + s * L.col(i);
             Xsig_aug.col(k) = x_aug - s * L.col(i);
 	    // normalize
-            Xsig_aug(3,j)   = norm_angle(Xsig_aug(3,j));
-            Xsig_aug(3,k)   = norm_angle(Xsig_aug(3,k));
-            Xsig_aug(4,j)   = norm_angle(Xsig_aug(4,j));
-            Xsig_aug(4,k)   = norm_angle(Xsig_aug(4,k));
+            //Xsig_aug(3,j)   = norm_angle(Xsig_aug(3,j));
+            //Xsig_aug(3,k)   = norm_angle(Xsig_aug(3,k));
+            //Xsig_aug(4,j)   = norm_angle(Xsig_aug(4,j));
+            //Xsig_aug(4,k)   = norm_angle(Xsig_aug(4,k));
         }
     //}
 
@@ -316,9 +318,9 @@ void UnscentedKalmanFilter::SigmaPointPrediction(double delta_t, const MatrixXd 
     v_p = v_p + nua*delta_t;
 
     yaw_p = yaw_p + 0.5*nuyawdd*dts;
-    yaw_p = norm_angle(yaw_p);
+    //yaw_p = norm_angle(yaw_p);
     yawd_p = yawd_p + nuyawdd*delta_t;
-    yawd_p = norm_angle(yawd_p);
+    //yawd_p = norm_angle(yawd_p);
 
     // write predicted sigma point into right column
     Xsig_pred(0,i) = px_p;
@@ -380,8 +382,8 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
       x = x + weights_(i) * Xsig_pred.col(i);
   }
-  x(3) = norm_angle(x(3));
-  x(4) = norm_angle(x(4));
+  //x(3) = norm_angle(x(3));
+  //x(4) = norm_angle(x(4));
 
   // predicted state covariance matrix
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
@@ -389,15 +391,15 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
     // state difference
     VectorXd x_diff = Xsig_pred.col(i) - x;
     x_diff(3) = norm_angle(x_diff(3));
-    x_diff(4) = norm_angle(x_diff(4));
+    //x_diff(4) = norm_angle(x_diff(4));
 
     P = P + weights_(i) * x_diff * x_diff.transpose();
   }
 
-  for (int i=0; i<P.cols(); i++) {
-       P(3,i) = norm_angle(P(3,i));
-       P(4,i) = norm_angle(P(4,i));
-  }
+  //for (int i=0; i<P.cols(); i++) {
+  //     P(3,i) = norm_angle(P(3,i));
+  //     P(4,i) = norm_angle(P(4,i));
+  //}
 }
  
 void UnscentedKalmanFilter::PredictLidarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Ysig, VectorXd &y_pred, MatrixXd &S) {
@@ -463,7 +465,7 @@ void UnscentedKalmanFilter::PredictRadarMeasurement(const MatrixXd &Xsig_pred, M
         // add column to mean predicted measurement
         z_pred = z_pred + weights_(i) * Zsig.col(i);
     }
-    z_pred(1) = norm_angle(z_pred(1));
+    //z_pred(1) = norm_angle(z_pred(1));
 
     // measurement covariance matrix S
     for (int i=0; i<n_sigma_; i++) {  // 2n+1 sigma points
@@ -482,9 +484,9 @@ void UnscentedKalmanFilter::PredictRadarMeasurement(const MatrixXd &Xsig_pred, M
 
     S = S + R;
 
-    for (int i=0; i<S.cols(); i++) {
-        S(1,i) = norm_angle(S(1,i));
-    }
+    //for (int i=0; i<S.cols(); i++) {
+    //    S(1,i) = norm_angle(S(1,i));
+    //}
 }
  
 void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S, 
@@ -509,15 +511,15 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
        // state difference
        VectorXd x_diff = Xsig_pred.col(i) - x;
        x_diff(3) = norm_angle(x_diff(3));
-       x_diff(4) = norm_angle(x_diff(4));
+       //x_diff(4) = norm_angle(x_diff(4));
 
        Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
    }
 
-   for (int i=0; i<Tc.cols(); i++) {
-   	   Tc(3,i) = norm_angle(Tc(3,i));
-   	   Tc(4,i) = norm_angle(Tc(4,i));
-   }
+   //for (int i=0; i<Tc.cols(); i++) {
+   //	   Tc(3,i) = norm_angle(Tc(3,i));
+   //	   Tc(4,i) = norm_angle(Tc(4,i));
+   //}
 
    // Kalman gain K;
    MatrixXd K = Tc * S.inverse();
@@ -529,13 +531,13 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
 
    // update state mean and covariance matrix
    x = x + K * z_diff;
-   x(3) = norm_angle(x(3));
-   x(4) = norm_angle(x(4));
+   //x(3) = norm_angle(x(3));
+   //x(4) = norm_angle(x(4));
    P = P - K*S*K.transpose();
-   for (int i=0; i<n_x_; i++) {
-       P(3,i) = norm_angle(P(3,i));
-       P(4,i) = norm_angle(P(4,i));
-   }
+   //for (int i=0; i<n_x_; i++) {
+   //    P(3,i) = norm_angle(P(3,i));
+   //    P(4,i) = norm_angle(P(4,i));
+   //}
 
 #if 0
    std::cout << "z:" << z.transpose() << std::endl;
