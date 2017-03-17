@@ -158,7 +158,7 @@ int main(int argc, char* argv[]) {
   // frame)
   for (size_t k = 0; k < number_of_measurements; ++k) {
     // Call the UKF-based fusion
-    //std::cout << k << std::endl;
+    std::cout << k << std::endl;
     double nis = ukf.ProcessMeasurement(measurement_pack_list[k]);
 
     // output the estimation

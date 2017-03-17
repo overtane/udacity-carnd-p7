@@ -3,13 +3,38 @@
 #include "UnscentedKalmanFilter.h"
 #include "Tools.h"
 
+static const double PI2 = 2.*M_PI;
 
+#define NORM_ANGLE_LOOP
+#ifdef NORM_ANGLE_LOOP
 static double norm_angle(double a) {
-    static const double PI2 = 2.*M_PI;
-    a = fmod(a,PI2); // force between [0, 2*PI)
-    return (a > M_PI) ? a - PI2 : a; // [-PI, PI)
-    //return a - ceil((a-M_PI)/(PI2))*PI2;
+   while (a > M_PI) a -= 2.*M_PI;
+   while (a < -M_PI) a += 2.*M_PI;
+   return a;
+}
+#endif
+
+//#define NORM_ANGLE_FMOD
+#ifdef NORM_ANGLE_FMOD
+static double norm_angle(double a) {
+    if (fabs(a)> M_PI) {
+       double b = fmod(a,PI2); // force between [0, 2*PI)
+       double c = (b > M_PI) ? b - PI2 : (b < -M_PI) ? M_PI + b : b; // [-PI, PI)
+   	cout << "NORM_ANGLE: " << a << ", " << b << ", " << c << endl;
+    	return c;
+    } else {
+    	return a;
+    }
 }	
+#endif
+
+//#define NORM_ANGLE_CEIL
+#ifdef NORM_ANGLE_CEIL
+static double norm_angle(double a) {
+    return a - ceil((a-M_PI)/(PI2))*PI2;
+}
+#endif
+
 /**
  * Initializes Unscented Kalman filter
  */
@@ -35,10 +60,10 @@ UnscentedKalmanFilter::UnscentedKalmanFilter() {
 	0, 0,    0,      0, M_PI/8;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 3; 
+  std_a_ = 5; 
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = .5; 
+  std_yawdd_ = .6; 
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -58,7 +83,7 @@ UnscentedKalmanFilter::UnscentedKalmanFilter() {
   previous_timestamp_ = 0;
 
   n_x_ = 5;
-  n_aug_ = 7;
+  n_aug_ = n_x_ + 2;
   lambda_ = 3 - n_aug_; // TODO: how is lambda defined?
   n_sigma_ = 2 * n_aug_ + 1;
 
@@ -114,7 +139,7 @@ double UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
   // skip prediction, if measurement has (about) the same timestamp as previous
   // timestamps are microseconds
   //if (mp.timestamp_ > previous_timestamp_) {
-  //  dt = 1.0;
+  //  dt = 0.2;
   //} else 
   //  dt = 0.0;
       
@@ -249,8 +274,14 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
     Eigen::LLT<MatrixXd> lltOfPaug(P_aug); // compute the Cholesky decomposition of P_aug
     if(lltOfPaug.info() == Eigen::NumericalIssue) {
         std::cout << "LLT failed!" << std::endl;
-    }	
+        //L = lltOfPaug.matrixL(); 
+        //L(n_aug_-2,n_aug_-2) = std_a_;
+        //L(n_aug_-1,n_aug_-1) = std_yawdd_;
+	throw std::range_error("LLT failed");
+    }
+    
     MatrixXd L = lltOfPaug.matrixL(); 
+
     //    std::cout << "P_aug:" << P_aug << std::endl;
     //	ret = false;
     //
@@ -275,8 +306,6 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
 	    // normalize
             //Xsig_aug(3,j)   = norm_angle(Xsig_aug(3,j));
             //Xsig_aug(3,k)   = norm_angle(Xsig_aug(3,k));
-            //Xsig_aug(4,j)   = norm_angle(Xsig_aug(4,j));
-            //Xsig_aug(4,k)   = norm_angle(Xsig_aug(4,k));
         }
     //}
 
@@ -286,7 +315,7 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
 void UnscentedKalmanFilter::SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixXd &Xsig_pred) {
 
   for (int i=0; i<n_sigma_; i++) {
-#if 1
+
     // extract values for better readability
     double px      = Xsig_aug(0,i);
     double py      = Xsig_aug(1,i);
@@ -318,58 +347,14 @@ void UnscentedKalmanFilter::SigmaPointPrediction(double delta_t, const MatrixXd 
     v_p = v_p + nua*delta_t;
 
     yaw_p = yaw_p + 0.5*nuyawdd*dts;
-    //yaw_p = norm_angle(yaw_p);
     yawd_p = yawd_p + nuyawdd*delta_t;
-    //yawd_p = norm_angle(yawd_p);
 
     // write predicted sigma point into right column
     Xsig_pred(0,i) = px_p;
     Xsig_pred(1,i) = py_p;
     Xsig_pred(2,i) = v_p;
-    Xsig_pred(3,i) = yaw_p;
+    Xsig_pred(3,i) = norm_angle(yaw_p);
     Xsig_pred(4,i) = yawd_p;
-#else
-    //extract values for better readability
-    double p_x = Xsig_aug(0,i);
-    double p_y = Xsig_aug(1,i);
-    double v = Xsig_aug(2,i);
-    double yaw = Xsig_aug(3,i);
-    double yawd = Xsig_aug(4,i);
-    double nu_a = Xsig_aug(5,i);
-    double nu_yawdd = Xsig_aug(6,i);
-    //
-    //predicted state values
-    double px_p, py_p;
-
-    //avoid division by zero
-    if (fabs(yawd) > 0.001) {
-        px_p = p_x + v/yawd * ( sin (yaw + yawd*delta_t) - sin(yaw));
-        py_p = p_y + v/yawd * ( cos(yaw) - cos(yaw+yawd*delta_t) );
-    }
-    else {
-        px_p = p_x + v*delta_t*cos(yaw);
-        py_p = p_y + v*delta_t*sin(yaw);
-    }
-
-    double v_p = v;
-    double yaw_p = yaw + yawd*delta_t;
-    double yawd_p = yawd;
-
-    //add noise
-    px_p = px_p + 0.5*nu_a*delta_t*delta_t * cos(yaw);
-    py_p = py_p + 0.5*nu_a*delta_t*delta_t * sin(yaw);
-    v_p = v_p + nu_a*delta_t;
-
-    yaw_p = yaw_p + 0.5*nu_yawdd*delta_t*delta_t;
-    yawd_p = yawd_p + nu_yawdd*delta_t;
-
-    //write predicted sigma point into right column
-    Xsig_pred(0,i) = px_p;
-    Xsig_pred(1,i) = py_p;
-    Xsig_pred(2,i) = v_p;
-    Xsig_pred(3,i) = yaw_p;
-    Xsig_pred(4,i) = yawd_p;
-#endif
   }
 }
 
@@ -382,8 +367,7 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
       x = x + weights_(i) * Xsig_pred.col(i);
   }
-  //x(3) = norm_angle(x(3));
-  //x(4) = norm_angle(x(4));
+  x(3) = norm_angle(x(3));
 
   // predicted state covariance matrix
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
@@ -391,15 +375,13 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
     // state difference
     VectorXd x_diff = Xsig_pred.col(i) - x;
     x_diff(3) = norm_angle(x_diff(3));
-    //x_diff(4) = norm_angle(x_diff(4));
 
     P = P + weights_(i) * x_diff * x_diff.transpose();
   }
 
-  //for (int i=0; i<P.cols(); i++) {
-  //     P(3,i) = norm_angle(P(3,i));
-  //     P(4,i) = norm_angle(P(4,i));
-  //}
+  for (int i=0; i<P.cols(); i++) {
+       P(3,i) = norm_angle(P(3,i));
+  }
 }
  
 void UnscentedKalmanFilter::PredictLidarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Ysig, VectorXd &y_pred, MatrixXd &S) {
@@ -483,10 +465,6 @@ void UnscentedKalmanFilter::PredictRadarMeasurement(const MatrixXd &Xsig_pred, M
             0,                   0,                       std_radrd_*std_radrd_;
 
     S = S + R;
-
-    //for (int i=0; i<S.cols(); i++) {
-    //    S(1,i) = norm_angle(S(1,i));
-    //}
 }
  
 void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S, 
@@ -511,15 +489,9 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
        // state difference
        VectorXd x_diff = Xsig_pred.col(i) - x;
        x_diff(3) = norm_angle(x_diff(3));
-       //x_diff(4) = norm_angle(x_diff(4));
 
        Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
    }
-
-   //for (int i=0; i<Tc.cols(); i++) {
-   //	   Tc(3,i) = norm_angle(Tc(3,i));
-   //	   Tc(4,i) = norm_angle(Tc(4,i));
-   //}
 
    // Kalman gain K;
    MatrixXd K = Tc * S.inverse();
@@ -531,15 +503,13 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
 
    // update state mean and covariance matrix
    x = x + K * z_diff;
-   //x(3) = norm_angle(x(3));
-   //x(4) = norm_angle(x(4));
+   x(3) = norm_angle(x(3));
    P = P - K*S*K.transpose();
-   //for (int i=0; i<n_x_; i++) {
-   //    P(3,i) = norm_angle(P(3,i));
-   //    P(4,i) = norm_angle(P(4,i));
-   //}
+   for (int i=0; i<n_x; i++) {
+       P(3,i) = norm_angle(P(3,i));
+   }
 
-#if 0
+#if 1
    std::cout << "z:" << z.transpose() << std::endl;
    std::cout << "z_pred:" << z_pred.transpose() << std::endl;
    std::cout << "Xsig_pred:" << Xsig_pred << std::endl;
