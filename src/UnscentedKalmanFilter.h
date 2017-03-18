@@ -82,10 +82,13 @@ public:
   ///* previous measurement
   long previous_timestamp_;
 
+  MeasurementPackage previous_measurement_;
+
   /**
    * Constructor
    */
   UnscentedKalmanFilter();
+  UnscentedKalmanFilter(double, double);
 
   /**
    * Destructor
@@ -101,6 +104,8 @@ public:
 
 
 private:
+
+  void InitializeMeasurement(MeasurementPackage mp);
 
   /**
    * Prediction Predicts sigma points, the state, and the state covariance

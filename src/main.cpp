@@ -15,6 +15,17 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 
+void usage() {
+	cout << "UnscentedKF [-l|-r|-a <double>|-y <double>] input output" << endl;
+	cout << "-l - include lidar measurements" << endl;
+	cout << "-r - include radar measurements" << endl;
+	cout << "(omitting -l and -r includes all measurements" << endl;
+	cout << "-a <double> - stardard deviation of longitural acceleration noise" << endl;
+	cout << "-y <double> - standard deviation of yaw acceleration noise" << endl;
+	cout << "input - path to measurement input file" << endl;
+	cout << "output - path to prediction output file" << endl;
+}
+
 void check_arguments(int argc, char* argv[]) {
   string usage_instructions = "Usage instructions: ";
   usage_instructions += argv[0];
@@ -145,7 +156,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Create a UKF instance
-  UnscentedKalmanFilter ukf;
+  UnscentedKalmanFilter ukf(5,.75);
 
   size_t number_of_measurements = measurement_pack_list.size();
 
