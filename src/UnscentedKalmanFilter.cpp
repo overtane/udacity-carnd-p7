@@ -8,11 +8,11 @@ static const double PI2 = 2.*M_PI;
 #define NORM_ANGLE_LOOP
 #ifdef NORM_ANGLE_LOOP
 static double norm_angle(double a) {
-   //if (fabs(a) > M_PI) {
-   //  cout << "NORM_ANGLE: " << a << endl;
+   if (fabs(a) > M_PI) {
+     cout << "NORM_ANGLE: " << a << endl;
      while (a > M_PI) a -= PI2;
      while (a < -M_PI) a += PI2;
-   //}
+   }
    return a;
 }
 #endif
@@ -338,7 +338,7 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
       x = x + weights_(i) * Xsig_pred.col(i);
   }
-  //x(3) = norm_angle(x(3));
+  x(3) = norm_angle(x(3));
 
   // predicted state covariance matrix
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
@@ -408,7 +408,7 @@ void UnscentedKalmanFilter::PredictRadarMeasurement(const MatrixXd &Xsig_pred, M
         // measurement model
 	// prepare column
         Zsig(0,i) = sqrt(px*px + py*py);          // r
-        if (fabs(Zsig(0,i))<0.0001)
+        if (fabs(Zsig(0,i))<0.0001) // prevent div by zero
 	    Zsig(0,i) = 0.0001;
 
 	Zsig(1,i) = atan2(py,px);                 // phi
@@ -472,7 +472,7 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
 
    // update state mean and covariance matrix
    x = x + K * z_diff;
-   //x(3) = norm_angle(x(3));
+   x(3) = norm_angle(x(3));
    P = P - K*S*K.transpose();
 
 #if 0

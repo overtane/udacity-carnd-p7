@@ -9,6 +9,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdlib.h>
+#include <unistd.h>
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -17,13 +18,64 @@ using std::vector;
 
 void usage() {
 	cout << "UnscentedKF [-l|-r|-a <double>|-y <double>] input output" << endl;
-	cout << "-l - include lidar measurements" << endl;
-	cout << "-r - include radar measurements" << endl;
-	cout << "(omitting -l and -r includes all measurements" << endl;
-	cout << "-a <double> - stardard deviation of longitural acceleration noise" << endl;
-	cout << "-y <double> - standard deviation of yaw acceleration noise" << endl;
-	cout << "input - path to measurement input file" << endl;
-	cout << "output - path to prediction output file" << endl;
+	cout << "    -l - include lidar measurements" << endl;
+	cout << "    -r - include radar measurements" << endl;
+	cout << "    (omitting -l and -r includes all measurements)" << endl;
+	cout << "    -a <double> - stardard deviation of longitural acceleration noise" << endl;
+	cout << "    -y <double> - standard deviation of yaw acceleration noise" << endl;
+	cout << "    input - path to measurement input file" << endl;
+	cout << "    output - path to prediction output file" << endl;
+}
+
+bool use_lidar = false;
+bool use_radar = false;
+double std_a = 5.0;
+double std_yawdd = 0.5; 
+string in_filename;
+string out_filename;
+
+void parse_arguments(int argc, char* argv[]) {
+ 
+    int opt;
+
+    while ((opt = getopt(argc, argv, "lra:y:")) != -1) {
+        switch (opt) {
+        case 'l':
+            use_lidar = true;
+            break;
+        case 'r':
+            use_radar = true;
+            break;
+        case 'a':
+	    std_a = atof(optarg);
+            break;
+        case 'y':
+	    std_yawdd = atof(optarg);
+            break;
+        default: /* '?' */
+	    usage();
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (!use_lidar && !use_radar)
+	    use_lidar = use_radar = true;
+
+    cout << "lidar: "    << use_lidar 
+         << " radar: "   << use_radar 
+         << " std_a: "   << std_a
+	 << " std_yawdd: " << std_yawdd << endl;
+
+    if (optind+2 != argc) {
+	usage();
+        exit(EXIT_FAILURE);
+    }
+
+    in_filename  = argv[optind];
+    out_filename = argv[optind+1];
+
+    cout << "in file: "  << in_filename  << endl;
+    cout << "out file: " << out_filename << endl;  
 }
 
 void check_arguments(int argc, char* argv[]) {
@@ -64,15 +116,17 @@ void check_files(ifstream& in_file, string& in_name,
 
 int main(int argc, char* argv[]) {
 
-  check_arguments(argc, argv);
+  parse_arguments(argc, argv);
 
-  string in_file_name_ = argv[1];
-  ifstream in_file_(in_file_name_.c_str(), ifstream::in);
+  //check_arguments(argc, argv);
 
-  string out_file_name_ = argv[2];
-  ofstream out_file_(out_file_name_.c_str(), ofstream::out);
+  //string in_file_name_ = argv[1];
+  ifstream in_file_(in_filename.c_str(), ifstream::in);
 
-  check_files(in_file_, in_file_name_, out_file_, out_file_name_);
+  //string out_file_name_ = argv[2];
+  ofstream out_file_(out_filename.c_str(), ofstream::out);
+
+  check_files(in_file_, in_filename, out_file_, out_filename);
 
   /**********************************************
    *  Set Measurements                          *
@@ -82,7 +136,6 @@ int main(int argc, char* argv[]) {
   vector<GroundTruthPackage> gt_pack_list;
   string line;
 
-  bool lidar_data = true; 
   bool radar_data = true;
   int n_meas = 0;
 
@@ -99,7 +152,7 @@ int main(int argc, char* argv[]) {
 
     if (sensor_type.compare("L") == 0) {
       // laser measurement
-      if (!lidar_data)
+      if (!use_lidar)
           continue;
 
       // read measurements at this timestamp
@@ -118,7 +171,7 @@ int main(int argc, char* argv[]) {
 
     } else if (sensor_type.compare("R") == 0) {
       // radar measurement
-      if (!radar_data)
+      if (!use_radar)
           continue;
       // read measurements at this timestamp
       meas_package.sensor_type_ = MeasurementPackage::RADAR;
@@ -156,11 +209,11 @@ int main(int argc, char* argv[]) {
   }
 
   // Create a UKF instance
-  UnscentedKalmanFilter ukf(5,.75);
+  UnscentedKalmanFilter ukf(std_a, std_yawdd);
 
   size_t number_of_measurements = measurement_pack_list.size();
 
-  std::cout << number_of_measurements << std::endl;
+  std::cout << "Number of measurements: " << number_of_measurements << std::endl;
 
   vector<VectorXd> estimations;
   vector<VectorXd> ground_truth;
