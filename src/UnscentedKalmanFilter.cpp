@@ -3,26 +3,7 @@
 #include "UnscentedKalmanFilter.h"
 #include "Tools.h"
 
-static const double PI2 = 2.*M_PI;
-
-#define NORM_ANGLE_LOOP
-#ifdef NORM_ANGLE_LOOP
-static double norm_angle(double a) {
-   if (fabs(a) > M_PI) {
-     cout << "NORM_ANGLE: " << a << endl;
-     while (a > M_PI) a -= PI2;
-     while (a < -M_PI) a += PI2;
-   }
-   return a;
-}
-#endif
-
-//#define NORM_ANGLE_CEIL
-#ifdef NORM_ANGLE_CEIL
-static double norm_angle(double a) {
-    return a - ceil((a-M_PI)/(PI2))*PI2;
-}
-#endif
+using namespace std;
 
 /**
  * Initializes Unscented Kalman filter
@@ -80,43 +61,25 @@ UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd) :
 
 UnscentedKalmanFilter::~UnscentedKalmanFilter() {}
 
-void UnscentedKalmanFilter::InitializeMeasurement(MeasurementPackage mp) {
+void UnscentedKalmanFilter::InitializeMeasurement(const Measurement *m) {
     
-    previous_measurement_ = mp;
-
     // initialize the covariance matrix
     P_ = MatrixXd::Identity(n_x_, n_x_); 
-    x_.fill(0.0);
-
     // initialize the state vector
-    if (mp.sensor_type_ == MeasurementPackage::RADAR) {
-      double rho = mp.raw_measurements_[0];
-      double phi = mp.raw_measurements_[1];
-      x_(0) = rho * cos(phi);
-      x_(1) = rho * sin(phi);
-      is_initialized_ = true;
-
-    } else if (mp.sensor_type_ == MeasurementPackage::LASER) {
-      x_(0) = mp.raw_measurements_[0];
-      x_(1) = mp.raw_measurements_[1];
-      is_initialized_ = true;
-
-    } else {
-      // Invalid data
-      throw std::invalid_argument("Invalid sensor type in measurement");
-    }
+    x_ = m->InitializeState(n_x_);
     return;
 }
 /**
- * @param {MeasurementPackage} mpage The latest measurement data of
+ * @param {MeasurementPackage} mp The latest measurement data of
  * either radar or laser.
  */
-double UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
+double UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
   /*****************************************************************************
    *  Initialization
    ****************************************************************************/
   if (!is_initialized_) {
-      InitializeMeasurement(mp);
+      InitializeMeasurement(m);
+      previous_measurement_ = m;
       return 0.0;
   }
 
@@ -125,37 +88,28 @@ double UnscentedKalmanFilter::ProcessMeasurement(MeasurementPackage mp) {
    ****************************************************************************/
 
   // Compute the time elapsed between the current and previous measurements, in seconds
-  double dt = (mp.timestamp_ - previous_measurement_.timestamp_) / 1000000.0;	
+  double dt = (m->timestamp_ - previous_measurement_->timestamp_) / 1000000.0;	
 
   try {
       Prediction(dt);
   } catch (std::range_error e) {
-      // If convariance matrix is non positive definite (because of numerical instability),
-      // restart the filter using previous measurement as initializer.
+      // If convariance matrix is non positive definite (because of numerical instability?),
+      // restart the filter using previous measurement as an initializer.
       InitializeMeasurement(previous_measurement_);
       // Redo prediction using the current measurement
       // We don't get exception this time, because intial P (identity) is positive definite.
       Prediction(dt);
   }
 
-  previous_measurement_ = mp;
+  previous_measurement_ = m;
 
   /*****************************************************************************
    *  Update
    ****************************************************************************/
 
-  double nis = 0.0; 
+  m->nis_ = Update(m);
 
-  if (mp.sensor_type_ == MeasurementPackage::RADAR) {
-    
-    nis = UpdateRadar(mp);
-
-  } else if (mp.sensor_type_ == MeasurementPackage::LASER) {
-
-    nis = UpdateLidar(mp);
-  }
-
-  return nis;
+  return m->nis_;
 }
 
 /**
@@ -176,29 +130,9 @@ void UnscentedKalmanFilter::Prediction(double delta_t) {
  * Updates the state and the state covariance matrix using a laser measurement.
  * @param {MeasurementPackage} mpage
  */
-double UnscentedKalmanFilter::UpdateLidar(MeasurementPackage mp) {
+double UnscentedKalmanFilter::Update(const Measurement *m) {
 
-  VectorXd y = mp.raw_measurements_;
-
-  int n_y = y.rows();
-
-  VectorXd y_pred(n_y);
-  MatrixXd S(n_y,n_y);
-  MatrixXd Ysig(n_y, n_sigma_);
-
-  PredictLidarMeasurement(Xsig_pred_, Ysig, y_pred, S);
-  UpdateState(y, y_pred, S, Xsig_pred_, Ysig, x_, P_);
-  
-  return Tools::NIS(y, y_pred, S);
-}
-
-/**
- * Updates the state and the state covariance matrix using a radar measurement.
- * @param {MeasurementPackage} mpage
- */
-double UnscentedKalmanFilter::UpdateRadar(MeasurementPackage mp) {
-
-  VectorXd z = mp.raw_measurements_;
+  VectorXd z = m->measurements_;
 
   int n_z = z.rows();
 
@@ -206,10 +140,10 @@ double UnscentedKalmanFilter::UpdateRadar(MeasurementPackage mp) {
   MatrixXd S(n_z,n_z);
   MatrixXd Zsig(n_z, n_sigma_);
 
-  PredictRadarMeasurement(Xsig_pred_, Zsig, z_pred, S);
-  UpdateState(mp.raw_measurements_, z_pred, S, Xsig_pred_, Zsig, x_, P_);
+  m->PredictMeasurement(Xsig_pred_, weights_, Zsig, z_pred, S);
+  UpdateState(z, z_pred, S, Xsig_pred_, Zsig, x_, P_);
   
-  return Tools::NIS(z, z_pred, S);
+  return Tools::CalculateNIS(z, z_pred, S);
 }
 
 void UnscentedKalmanFilter::GenerateSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig) {
@@ -262,10 +196,6 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
 	cout << "Eigenvalues of P_aug:" << endl << es.eigenvalues() << endl;
 	throw std::range_error("LLT failed");
     }
-	//Eigen::EigenSolver<MatrixXd> es(P_aug);
-	//cout << "P_aug:" << P_aug << endl;
-	//cout << "Eigenvalues of P_aug:" << endl << es.eigenvalues() << endl;
-
     // 2. get the lower triangle
     MatrixXd L = lltOfPaug.matrixL(); 
 
@@ -338,102 +268,20 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
       x = x + weights_(i) * Xsig_pred.col(i);
   }
-  x(3) = norm_angle(x(3));
+  x(3) = Tools::NormalizeAngle(x(3));
 
   // predicted state covariance matrix
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
 
     // state difference
     VectorXd x_diff = Xsig_pred.col(i) - x;
-    x_diff(3) = norm_angle(x_diff(3));
+    x_diff(3) = Tools::NormalizeAngle(x_diff(3));
 
     P = P + weights_(i) * x_diff * x_diff.transpose();
   }
 
   //Eigen::EigenSolver<MatrixXd> es(P);
   //cout << "Eigenvalues of P pred:" << endl << es.eigenvalues() << endl;
-}
- 
-void UnscentedKalmanFilter::PredictLidarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Ysig, VectorXd &y_pred, MatrixXd &S) {
-
-    int n_y = y_pred.rows();
-
-    // Initialize output
-    y_pred.fill(0.0);
-    S.fill(0.0);
-
-    // transform sigma points into measurement space
-    for (int i=0; i<n_sigma_; i++) {  // 2n+1 sigma points
-	// prepare column i
-	Ysig(0,i) = Xsig_pred(0,i);
-	Ysig(1,i) = Xsig_pred(1,i);
-
-        // add to mean predicted measurement
-        y_pred = y_pred + weights_(i) * Ysig.col(i);
-    }
-
-    // measurement covariance matrix S
-    for (int i=0; i<n_sigma_; i++) {  // 2n+1 sigma points
-        // residual
-        VectorXd y_diff = Ysig.col(i) - y_pred;
-        S = S + weights_(i) * y_diff * y_diff.transpose();
-    }
-
-    // add measurement noise covariance matrix
-    MatrixXd R = MatrixXd(n_y,n_y);
-    R <<    std_laspx_*std_laspx_, 0,
-            0, std_laspy_*std_laspy_;
-
-    S = S + R;
-}
-void UnscentedKalmanFilter::PredictRadarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S) {
-
-  int n_z = z_pred.rows();
-
-  z_pred.fill(0.0);
-  S.fill(0.0);
-
-  // transform sigma points into measurement space
-  for (int i=0; i<n_sigma_; i++) {  // 2n+1 sigma points
-
-        // extract values for better readibility
-        double px  = Xsig_pred(0,i);
-        double py  = Xsig_pred(1,i);
-        double v   = Xsig_pred(2,i);
-        double yaw = Xsig_pred(3,i);
-
-        double v1 = cos(yaw)*v;
-        double v2 = sin(yaw)*v;
-
-        // measurement model
-	// prepare column
-        Zsig(0,i) = sqrt(px*px + py*py);          // r
-        if (fabs(Zsig(0,i))<0.0001) // prevent div by zero
-	    Zsig(0,i) = 0.0001;
-
-	Zsig(1,i) = atan2(py,px);                 // phi
-        Zsig(2,i) = (px*v1 + py*v2 ) / Zsig(0,i); // r_dot
-
-        // add column to mean predicted measurement
-        z_pred = z_pred + weights_(i) * Zsig.col(i);
-    }
-
-    // measurement covariance matrix S
-    for (int i=0; i<n_sigma_; i++) {  // 2n+1 sigma points
-        // residual
-        VectorXd z_diff = Zsig.col(i) - z_pred;
-        z_diff(1) = norm_angle(z_diff(1));
-
-        S = S + weights_(i) * z_diff * z_diff.transpose();
-    }
-
-    // add measurement noise covariance matrix
-    MatrixXd R(n_z,n_z);
-    R <<    std_radr_*std_radr_, 0,                       0,
-            0,                   std_radphi_*std_radphi_, 0,
-            0,                   0,                       std_radrd_*std_radrd_;
-
-    S = S + R;
 }
  
 void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S, 
@@ -453,11 +301,11 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
        // residual
        VectorXd z_diff = Zsig.col(i) - z_pred;
        if (n_z == 3) // angle in z;
-           z_diff(1) = norm_angle(z_diff(1));
+           z_diff(1) = Tools::NormalizeAngle(z_diff(1));
 
        // state difference
        VectorXd x_diff = Xsig_pred.col(i) - x;
-       x_diff(3) = norm_angle(x_diff(3));
+       x_diff(3) = Tools::NormalizeAngle(x_diff(3));
 
        Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
    }
@@ -468,11 +316,11 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
    // residual
    VectorXd z_diff = z - z_pred;
    if (n_z == 3)
-       z_diff(1) = norm_angle(z_diff(1));
+       z_diff(1) = Tools::NormalizeAngle(z_diff(1));
 
    // update state mean and covariance matrix
    x = x + K * z_diff;
-   x(3) = norm_angle(x(3));
+   x(3) = Tools::NormalizeAngle(x(3));
    P = P - K*S*K.transpose();
 
 #if 0

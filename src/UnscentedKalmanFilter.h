@@ -1,8 +1,7 @@
 #ifndef UNSCENTED_KALMAN_FILTER_H_
 #define UNSCENTED_KALMAN_FILTER_H_
 #include "Eigen/Dense"
-#include "MeasurementPackage.h"
-#include "GroundTruthPackage.h"
+#include "Measurement.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -79,10 +78,7 @@ public:
   ///* the current NIS for laser
   double NIS_laser_;
 
-  ///* previous measurement
-  long previous_timestamp_;
-
-  MeasurementPackage previous_measurement_;
+  Measurement *previous_measurement_;
 
   /**
    * Constructor
@@ -100,12 +96,12 @@ public:
    * @param meas_package The latest measurement data of either radar or laser
    * @param gt_package The ground truth of the state x at measurement time
    */
-  double ProcessMeasurement(MeasurementPackage meas_package);
+  double ProcessMeasurement(Measurement *m);
 
 
 private:
 
-  void InitializeMeasurement(MeasurementPackage mp);
+  void InitializeMeasurement(const Measurement *m);
 
   /**
    * Prediction Predicts sigma points, the state, and the state covariance
@@ -118,13 +114,7 @@ private:
    * Updates the state and the state covariance matrix using a laser measurement
    * @param meas_package The measurement at k+1
    */
-  double UpdateLidar(MeasurementPackage meas_package);
-
-  /**
-   * Updates the state and the state covariance matrix using a radar measurement
-   * @param meas_package The measurement at k+1
-   */
-  double UpdateRadar(MeasurementPackage meas_package);
+  double Update(const Measurement *m);
 
     void GenerateSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_out);
       
@@ -134,10 +124,6 @@ private:
 	  
     void PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd &x, MatrixXd &P);
 	   
-    void PredictLidarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Ysig, VectorXd &y_pred, MatrixXd &S);
-	     
-    void PredictRadarMeasurement(const MatrixXd &Xsig_pred, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S);
-	     
     void UpdateState(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S, 
 		     const MatrixXd &Zsig, const MatrixXd &Xsig_pred, 
 		     VectorXd &x, MatrixXd &P);

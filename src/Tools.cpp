@@ -1,27 +1,50 @@
-#include <iostream>
 #include "Tools.h"
+#include <math.h>
+#include <iostream>
+#include <vector>
 
 Tools::Tools() {}
 
 Tools::~Tools() {}
 
-double Tools::NIS(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S) {
+const double Tools::PI2 = 2 * M_PI;
+#define NORM_ANGLE_LOOP
+//#define NORM_ANGLE_CEIL
+
+double Tools::NormalizeAngle(double a) {
+#if defined(NORM_ANGLE_LOOP)
+    int n = 0;
+    while (a > M_PI)  {a -= Tools::PI2; n++;}
+    while (a < -M_PI) {a += Tools::PI2; n++;}
+    if (n>0)
+        std::cout << "normalize operations: " << n  << std::endl; 
+    return a;
+#elif defined(NORM_ANGLE_CEIL)
+    return a - ceil((a-M_PI)/(Tools::PI2))*Tools::PI2;
+#else
+    return a;
+#endif
+}
+
+double Tools::CalculateNIS(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S) {
   VectorXd z_diff = z - z_pred;
   return z_diff.transpose() * S.inverse() * z_diff;
 }
 
-VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
-                              const vector<VectorXd> &ground_truth) {
+VectorXd Tools::CalculateRMSE(const std::vector<VectorXd> &estimations,
+                              const std::vector<VectorXd> &ground_truth) {
 
-    VectorXd rmse(4);
-    rmse << 0,0,0,0;
-    
     // check the validity of the following inputs:
     //  * the estimation vector size should not be zero
     //  * the estimation vector size should equal ground truth vector size
     if (estimations.size() == 0 || (estimations.size() != ground_truth.size())) {
-        return rmse;
+	VectorXd e(1);
+	e.fill(0.0);
+        return e;
     }
+    
+    VectorXd rmse(4);
+    rmse.fill(0.0);
     
     //accumulate squared residuals
     for(int i=0; i < estimations.size(); ++i) {
@@ -51,14 +74,12 @@ MatrixXd Tools::CalculateJacobian(const VectorXd& x_state) {
     float vx = x_state(2);
     float vy = x_state(3);
     
-    //TODO: YOUR CODE HERE
-    
     //check division by zero
     if (fabs(px)<0.001 && fabs(py)<0.001) {
         Hj << 0, 0, 0, 0,
               0, 0, 0, 0,
               0, 0, 0, 0;
-        cout << "Division by zero" << endl;
+	std::cout << "Division by zero" << std::endl;
     } else {
         //compute the Jacobian matrix
         float dvdr2 = px*px + py*py;

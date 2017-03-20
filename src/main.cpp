@@ -1,11 +1,12 @@
 
-#include <iostream>
 #include "Eigen/Dense"
-#include <vector>
+#include "Measurement.h"
+#include "MeasurementFactory.h"
 #include "UnscentedKalmanFilter.h"
 #include "MeasurementPackage.h"
-#include "GroundTruthPackage.h"
 #include "Tools.h"
+#include <vector>
+#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <stdlib.h>
@@ -17,12 +18,14 @@ using Eigen::VectorXd;
 using std::vector;
 
 void usage() {
-	cout << "UnscentedKF [-l|-r|-a <double>|-y <double>] input output" << endl;
+	cout << "UnscentedKF [-l|-r|-a <double>|-y <double>|-d|-D] input output" << endl;
 	cout << "    -l - include lidar measurements" << endl;
 	cout << "    -r - include radar measurements" << endl;
 	cout << "    (omitting -l and -r includes all measurements)" << endl;
 	cout << "    -a <double> - stardard deviation of longitural acceleration noise" << endl;
 	cout << "    -y <double> - standard deviation of yaw acceleration noise" << endl;
+	cout << "    -d - add some debugging output" << endl;
+	cout << "    -D - add more debugging output" << endl;
 	cout << "    input - path to measurement input file" << endl;
 	cout << "    output - path to prediction output file" << endl;
 }
@@ -33,18 +36,25 @@ double std_a = 5.0;
 double std_yawdd = 0.5; 
 string in_filename;
 string out_filename;
+int debug = 0;
 
 void parse_arguments(int argc, char* argv[]) {
  
     int opt;
 
-    while ((opt = getopt(argc, argv, "lra:y:")) != -1) {
+    while ((opt = getopt(argc, argv, "dDlra:y:")) != -1) {
         switch (opt) {
         case 'l':
             use_lidar = true;
             break;
         case 'r':
             use_radar = true;
+            break;
+        case 'd':
+            debug = 1;
+            break;
+        case 'D':
+            debug = 2;
             break;
         case 'a':
 	    std_a = atof(optarg);
@@ -117,23 +127,42 @@ void check_files(ifstream& in_file, string& in_name,
 int main(int argc, char* argv[]) {
 
   parse_arguments(argc, argv);
-
-  //check_arguments(argc, argv);
-
-  //string in_file_name_ = argv[1];
   ifstream in_file_(in_filename.c_str(), ifstream::in);
-
-  //string out_file_name_ = argv[2];
   ofstream out_file_(out_filename.c_str(), ofstream::out);
-
   check_files(in_file_, in_filename, out_file_, out_filename);
 
   /**********************************************
    *  Set Measurements                          *
    **********************************************/
 
+  // Initialize covariance matrices for different sensor types
+  // Laser measurement noise standard deviation position1 in m
+  double std_laspx = 0.15;
+
+  // Laser measurement noise standard deviation position2 in m
+  double std_laspy = 0.15;
+
+  // Radar measurement noise standard deviation radius in m
+  double std_radr = 0.3;
+
+  // Radar measurement noise standard deviation angle in rad
+  double std_radphi = 0.03;
+
+  // Radar measurement noise standard deviation radius change in m/s
+  double std_radrd = 0.3;
+
+  VectorXd r_radar(3);
+  r_radar << std_radr, std_radphi, std_radrd;
+  RadarMeasurement::SetR(r_radar);
+  VectorXd r_lidar(2);
+  r_lidar << std_laspy, std_laspx;
+  LidarMeasurement::SetR(r_radar);
+
+  MeasurementFactory* mf = MeasurementFactory::GetInstance();
+
   vector<MeasurementPackage> measurement_pack_list;
-  vector<GroundTruthPackage> gt_pack_list;
+  vector<Measurement*> measurements;
+  vector<VectorXd> ground_truth;
   string line;
 
   bool radar_data = true;
@@ -142,88 +171,52 @@ int main(int argc, char* argv[]) {
   // prep the measurement packages (each line represents a measurement at a
   // timestamp)
   while (getline(in_file_, line)) {
-    string sensor_type;
-    MeasurementPackage meas_package;
-    GroundTruthPackage gt_package;
+    Measurement *m;
     istringstream iss(line);
-    long timestamp;
 
-    iss >> sensor_type;
+    m = mf->CreateMeasurement(iss);
+    if (m != 0) {
+        measurements.push_back(m);
 
-    if (sensor_type.compare("L") == 0) {
-      // laser measurement
-      if (!use_lidar)
-          continue;
+        // read ground truth data to compare later
+        float x_gt;
+        float y_gt;
+        float vx_gt;
+        float vy_gt;
+        iss >> x_gt;
+        iss >> y_gt;
+        iss >> vx_gt;
+        iss >> vy_gt;
+        VectorXd gt(4);
+        gt  << x_gt, y_gt, vx_gt, vy_gt;
+        ground_truth.push_back(gt);
 
-      // read measurements at this timestamp
-      meas_package.sensor_type_ = MeasurementPackage::LASER;
-      meas_package.raw_measurements_ = VectorXd(2);
-      float px;
-      float py;
-
-      iss >> px;
-      iss >> py;
-
-      meas_package.raw_measurements_ << px, py;
-      iss >> timestamp;
-      meas_package.timestamp_ = timestamp;
-      measurement_pack_list.push_back(meas_package);
-
-    } else if (sensor_type.compare("R") == 0) {
-      // radar measurement
-      if (!use_radar)
-          continue;
-      // read measurements at this timestamp
-      meas_package.sensor_type_ = MeasurementPackage::RADAR;
-      meas_package.raw_measurements_ = VectorXd(3);
-      float rho;
-      float theta;
-      float rho_dot;
-
-      iss >> rho;
-      iss >> theta;
-      iss >> rho_dot;
-
-      meas_package.raw_measurements_ << rho, theta, rho_dot;
-
-      iss >> timestamp;
-      meas_package.timestamp_ = timestamp;
-      measurement_pack_list.push_back(meas_package);
+        n_meas++;
     }
-
-    // read ground truth data to compare later
-    float x_gt;
-    float y_gt;
-    float vx_gt;
-    float vy_gt;
-    iss >> x_gt;
-    iss >> y_gt;
-    iss >> vx_gt;
-    iss >> vy_gt;
-    gt_package.gt_values_ = VectorXd(4);
-    gt_package.gt_values_ << x_gt, y_gt, vx_gt, vy_gt;
-    gt_pack_list.push_back(gt_package);
-
-    n_meas++;
-    //if (n_meas >= 94) break;
   }
 
   // Create a UKF instance
   UnscentedKalmanFilter ukf(std_a, std_yawdd);
 
-  size_t number_of_measurements = measurement_pack_list.size();
+  size_t number_of_measurements = measurements.size();
 
   std::cout << "Number of measurements: " << number_of_measurements << std::endl;
 
   vector<VectorXd> estimations;
-  vector<VectorXd> ground_truth;
 
   // start filtering from the second frame (the speed is unknown in the first
   // frame)
   for (size_t k = 0; k < number_of_measurements; ++k) {
+
     // Call the UKF-based fusion
+    Measurement *m = measurements[k];
+    
     std::cout << k << std::endl;
-    double nis = ukf.ProcessMeasurement(measurement_pack_list[k]);
+    
+    double nis = ukf.ProcessMeasurement(m);
+
+    //cout << m->measurements_.transpose() << endl;
+    //cout << ukf.x_.transpose() << endl;
 
     // output the estimation
     out_file_ << nis << "\t"; // nis
@@ -236,30 +229,17 @@ int main(int argc, char* argv[]) {
     //out_file_ << ukf.x_(4) << "\t"; // yaw_rate -est
 
     // output the measurements
-    if (measurement_pack_list[k].sensor_type_ == MeasurementPackage::LASER) {
-      // p1 - meas
-      out_file_ << measurement_pack_list[k].raw_measurements_(0) << "\t";
-
-      // p2 - meas
-      out_file_ << measurement_pack_list[k].raw_measurements_(1) << "\t";
-    } else if (measurement_pack_list[k].sensor_type_ == MeasurementPackage::RADAR) {
-      // output the estimation in the cartesian coordinates
-      float rho = measurement_pack_list[k].raw_measurements_(0);
-      float phi = measurement_pack_list[k].raw_measurements_(1);
-      out_file_ << rho * cos(phi) << "\t"; // p1_meas
-      out_file_ << rho * sin(phi) << "\t"; // p2_meas
-    }
+    out_file_ << *m;
 
     // output the ground truth packages
-    out_file_ << gt_pack_list[k].gt_values_(0) << "\t";
-    out_file_ << gt_pack_list[k].gt_values_(1) << "\t";
-    out_file_ << gt_pack_list[k].gt_values_(2) << "\t";
-    out_file_ << gt_pack_list[k].gt_values_(3) << "\n";
+    out_file_ << ground_truth[k](0) << "\t";
+    out_file_ << ground_truth[k](1) << "\t";
+    out_file_ << ground_truth[k](2) << "\t";
+    out_file_ << ground_truth[k](3) << "\t";
   
     VectorXd x(4);
-    x << ukf.x_(0), ukf.x_(1),ukf.x_(2)*cos(ukf.x_(3)), ukf.x_(2)*sin(ukf.x_(3)); // TODO: vx and vy
+    x << ukf.x_(0), ukf.x_(1),ukf.x_(2)*cos(ukf.x_(3)), ukf.x_(2)*sin(ukf.x_(3)); // TODO: vx and v
     estimations.push_back(x);
-    ground_truth.push_back(gt_pack_list[k].gt_values_);
   }
 
   // compute the accuracy (RMSE)

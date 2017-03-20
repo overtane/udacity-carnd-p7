@@ -1,16 +1,17 @@
 #ifndef TOOLS_H_
 #define TOOLS_H_
-#include <vector>
+
 #include "Eigen/Dense"
+#include <vector>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-using namespace std;
 
 class Tools {
-public:
+
+private:
   /**
-  * Constructor.
+  * Private Constructor. Cannot instantiate outside the class
   */
   Tools();
 
@@ -19,11 +20,22 @@ public:
   */
   virtual ~Tools();
 
-  static double NIS(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S);
+public:
+  static const double PI2;
+
+  /**
+   * Normalize angle between [-pi, pi]
+   */
+  static double NormalizeAngle(double a);
+
+  /** 
+   * Calculate normalized innovation squared 
+   */
+  static double CalculateNIS(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S);
   /**
   * A helper method to calculate RMSE.
   */
-  static VectorXd CalculateRMSE(const vector<VectorXd> &estimations, const vector<VectorXd> &ground_truth);
+  static VectorXd CalculateRMSE(const std::vector<VectorXd> &estimations, const std::vector<VectorXd> &ground_truth);
 
   /**
   * A helper method to calculate Jacobians.
