@@ -25,7 +25,7 @@ void Measurement::SetR(const VectorXd& r, MatrixXd& R) {
 	R = MatrixXd(r.rows(), r.rows());
 	R.fill(0.0);
 	for (int i=0; i<R.rows(); i++) {
-	    R(i,i) = r(i);
+	    R(i,i) = r(i)*r(i);
 	}
 }
 

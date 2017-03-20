@@ -8,14 +8,12 @@ using namespace std;
 /**
  * Initializes Unscented Kalman filter
  */
-UnscentedKalmanFilter::UnscentedKalmanFilter() {
-}
-
-UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd) :
-    is_initialized_(false),
-    n_x_(5),
+UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int debug) :
     std_a_(std_a),
-    std_yawdd_(std_yawdd)  
+    std_yawdd_(std_yawdd),
+    debug_(debug),	
+    is_initialized_(false),
+    n_x_(5)
 {
   // if this is false, laser measurements will be ignored (except during init)
   use_laser_ = false;
@@ -28,21 +26,6 @@ UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd) :
 
   // initial covariance matrix
   P_ = MatrixXd(n_x_, n_x_);
-
-  // Laser measurement noise standard deviation position1 in m
-  std_laspx_ = 0.15;
-
-  // Laser measurement noise standard deviation position2 in m
-  std_laspy_ = 0.15;
-
-  // Radar measurement noise standard deviation radius in m
-  std_radr_ = 0.3;
-
-  // Radar measurement noise standard deviation angle in rad
-  std_radphi_ = 0.03;
-
-  // Radar measurement noise standard deviation radius change in m/s
-  std_radrd_ = 0.3;
 
   n_aug_ = n_x_ + 2;
   lambda_ = 3 - n_aug_; // TODO: how is lambda defined?
@@ -58,8 +41,6 @@ UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd) :
   }
   
 }
-
-UnscentedKalmanFilter::~UnscentedKalmanFilter() {}
 
 void UnscentedKalmanFilter::InitializeMeasurement(const Measurement *m) {
     
@@ -80,6 +61,7 @@ double UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
   if (!is_initialized_) {
       InitializeMeasurement(m);
       previous_measurement_ = m;
+      is_initialized_ = true;
       return 0.0;
   }
 
@@ -120,6 +102,9 @@ double UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
 void UnscentedKalmanFilter::Prediction(double delta_t) {
 
     MatrixXd Xsig_aug(n_aug_, n_sigma_);
+
+    if (debug_)
+        std::cout << "Predict " << delta_t << std::endl;
  
     GenerateAugmentedSigmaPoints(x_, P_, Xsig_aug);
     SigmaPointPrediction(delta_t, Xsig_aug, Xsig_pred_);
@@ -139,6 +124,9 @@ double UnscentedKalmanFilter::Update(const Measurement *m) {
   VectorXd z_pred(n_z);
   MatrixXd S(n_z,n_z);
   MatrixXd Zsig(n_z, n_sigma_);
+
+  if (debug_)
+      std::cout << "Update " << m->measurements_.transpose() << std::endl;
 
   m->PredictMeasurement(Xsig_pred_, weights_, Zsig, z_pred, S);
   UpdateState(z, z_pred, S, Xsig_pred_, Zsig, x_, P_);
@@ -177,7 +165,9 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
     MatrixXd P_aug(n_aug_, n_aug_);
 
     // create augmented mean state
-    x_aug << x, 0, 0;
+    x_aug.head(n_x) = x;
+    for (int i=n_x; i<n_aug_; i++)
+	    x_aug(i) = 0.0;
 
     // create augmented covariance matrix
     P_aug.fill(0.0);
@@ -323,20 +313,21 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
    x(3) = Tools::NormalizeAngle(x(3));
    P = P - K*S*K.transpose();
 
-#if 0
-   std::cout << "z:" << z.transpose() << std::endl;
-   std::cout << "z_pred:" << z_pred.transpose() << std::endl;
-   std::cout << "Xsig_pred:" << Xsig_pred << std::endl;
-   std::cout << "Zsig:" << Zsig << std::endl;
-   std::cout << "Tc:" << Tc << std::endl;
-   std::cout << "S:" << S << std::endl;
-   std::cout << "S inverse:" << S.inverse() << std::endl;
-   std::cout << "K:" << K << std::endl;
-   std::cout << "K transpose:" << K.transpose() << std::endl;
-   std::cout << "P:" << P << std::endl;
-   std::cout << "P inverse:" << P.inverse() << std::endl;
-   std::cout << "x:" << x.transpose() << std::endl;
-   Eigen::EigenSolver<MatrixXd> es(P);
-   cout << "Eigenvalues of P:" << endl << es.eigenvalues() << endl;
-#endif
+   if (debug_ > 1) {
+       std::cout << "Update done:" << endl;
+       std::cout << "z:\n" << z.transpose() << std::endl;
+       std::cout << "z_pred:\n" << z_pred.transpose() << std::endl;
+       std::cout << "Xsig_pred:\n" << Xsig_pred << std::endl;
+       std::cout << "Zsig:\n" << Zsig << std::endl;
+       std::cout << "Tc:\n" << Tc << std::endl;
+       std::cout << "S:\n" << S << std::endl;
+       std::cout << "S inverse:\n" << S.inverse() << std::endl;
+       std::cout << "K:\n" << K << std::endl;
+       std::cout << "K transpose:\n" << K.transpose() << std::endl;
+       std::cout << "P:\n" << P << std::endl;
+       std::cout << "P inverse:\n" << P.inverse() << std::endl;
+       std::cout << "x:\n" << x.transpose() << std::endl;
+       Eigen::EigenSolver<MatrixXd> es(P);
+       cout << "Eigenvalues of P:\n" << es.eigenvalues() << endl;
+    }
 }

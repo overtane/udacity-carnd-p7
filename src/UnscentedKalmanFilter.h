@@ -10,6 +10,8 @@ class UnscentedKalmanFilter {
 
 public:
 
+  int debug_;
+
   ///* initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
 
@@ -25,12 +27,6 @@ public:
   ///* state covariance matrix
   MatrixXd P_;
 
-  ///* last valid state
-  VectorXd x_prev_;
-  MatrixXd P_prev_;
-  MatrixXd Xsig_aug_prev_;
-  long ts_prev_;
-
   ///* predicted sigma points matrix
   MatrixXd Xsig_pred_;
 
@@ -42,21 +38,6 @@ public:
 
   ///* Process noise standard deviation yaw acceleration in rad/s^2
   double std_yawdd_;
-
-  ///* Laser measurement noise standard deviation position1 in m
-  double std_laspx_;
-
-  ///* Laser measurement noise standard deviation position2 in m
-  double std_laspy_;
-
-  ///* Radar measurement noise standard deviation radius in m
-  double std_radr_;
-
-  ///* Radar measurement noise standard deviation angle in rad
-  double std_radphi_;
-
-  ///* Radar measurement noise standard deviation radius change in m/s
-  double std_radrd_ ;
 
   ///* Weights of sigma points
   VectorXd weights_;
@@ -83,13 +64,12 @@ public:
   /**
    * Constructor
    */
-  UnscentedKalmanFilter();
-  UnscentedKalmanFilter(double, double);
+  UnscentedKalmanFilter(double, double, int);
 
   /**
    * Destructor
    */
-  virtual ~UnscentedKalmanFilter();
+  virtual ~UnscentedKalmanFilter() {}
 
   /**
    * ProcessMeasurement
@@ -100,6 +80,8 @@ public:
 
 
 private:
+
+  UnscentedKalmanFilter() {}
 
   void InitializeMeasurement(const Measurement *m);
 

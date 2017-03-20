@@ -17,15 +17,21 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 
+static void usage();
+
+static void parse_arguments(int argc, char* argv[]);
+static void check_files(ifstream& in_file, string& in_name,
+                 ofstream& out_file, string& out_name);
+
 void usage() {
-	cout << "UnscentedKF [-l|-r|-a <double>|-y <double>|-d|-D] input output" << endl;
+	cout << "UnscentedKF [-l|-r|-n <in>|-a <double>|-y <double>|-d|-D] input output" << endl;
 	cout << "    -l - include lidar measurements" << endl;
 	cout << "    -r - include radar measurements" << endl;
 	cout << "    (omitting -l and -r includes all measurements)" << endl;
 	cout << "    -a <double> - stardard deviation of longitural acceleration noise" << endl;
 	cout << "    -y <double> - standard deviation of yaw acceleration noise" << endl;
-	cout << "    -d - add some debugging output" << endl;
-	cout << "    -D - add more debugging output" << endl;
+	cout << "    -d - add some debugging output (add more d's to get more output" << endl;
+	cout << "    -n <int> - number of measurements, use only <int> first measurements of the data" << endl;
 	cout << "    input - path to measurement input file" << endl;
 	cout << "    output - path to prediction output file" << endl;
 }
@@ -37,12 +43,13 @@ double std_yawdd = 0.5;
 string in_filename;
 string out_filename;
 int debug = 0;
+long n_meas = -1;
 
 void parse_arguments(int argc, char* argv[]) {
  
     int opt;
 
-    while ((opt = getopt(argc, argv, "dDlra:y:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:dDlra:y:")) != -1) {
         switch (opt) {
         case 'l':
             use_lidar = true;
@@ -51,10 +58,10 @@ void parse_arguments(int argc, char* argv[]) {
             use_radar = true;
             break;
         case 'd':
-            debug = 1;
+            debug++;
             break;
-        case 'D':
-            debug = 2;
+        case 'n':
+	    n_meas = atoi(optarg);
             break;
         case 'a':
 	    std_a = atof(optarg);
@@ -71,10 +78,15 @@ void parse_arguments(int argc, char* argv[]) {
     if (!use_lidar && !use_radar)
 	    use_lidar = use_radar = true;
 
-    cout << "lidar: "    << use_lidar 
-         << " radar: "   << use_radar 
-         << " std_a: "   << std_a
-	 << " std_yawdd: " << std_yawdd << endl;
+    if (debug) {
+        cout << "lidar: "    << use_lidar 
+             << " radar: "   << use_radar 
+             << " std_a: "   << std_a
+	     << " std_yawdd: " << std_yawdd 
+	     << " measurements: " << n_meas
+	     << " debug: " << debug
+	     << endl;
+    }
 
     if (optind+2 != argc) {
 	usage();
@@ -84,31 +96,10 @@ void parse_arguments(int argc, char* argv[]) {
     in_filename  = argv[optind];
     out_filename = argv[optind+1];
 
-    cout << "in file: "  << in_filename  << endl;
-    cout << "out file: " << out_filename << endl;  
-}
-
-void check_arguments(int argc, char* argv[]) {
-  string usage_instructions = "Usage instructions: ";
-  usage_instructions += argv[0];
-  usage_instructions += " path/to/input.txt output.txt";
-
-  bool has_valid_args = false;
-
-  // make sure the user has provided input and output files
-  if (argc == 1) {
-    cerr << usage_instructions << endl;
-  } else if (argc == 2) {
-    cerr << "Please include an output file.\n" << usage_instructions << endl;
-  } else if (argc == 3) {
-    has_valid_args = true;
-  } else if (argc > 3) {
-    cerr << "Too many arguments.\n" << usage_instructions << endl;
-  }
-
-  if (!has_valid_args) {
-    exit(EXIT_FAILURE);
-  }
+    if (debug) {
+         cout << "in file: "  << in_filename  << endl;
+        cout << "out file: " << out_filename << endl;
+    }
 }
 
 void check_files(ifstream& in_file, string& in_name,
@@ -156,7 +147,12 @@ int main(int argc, char* argv[]) {
   RadarMeasurement::SetR(r_radar);
   VectorXd r_lidar(2);
   r_lidar << std_laspy, std_laspx;
-  LidarMeasurement::SetR(r_radar);
+  LidarMeasurement::SetR(r_lidar);
+
+  if (debug>1) {
+      cout << "Radar covariance:\n" << RadarMeasurement::R_ << endl;  
+      cout << "Lidar covariance:\n" << LidarMeasurement::R_ << endl;  
+  }
 
   MeasurementFactory* mf = MeasurementFactory::GetInstance();
 
@@ -165,12 +161,9 @@ int main(int argc, char* argv[]) {
   vector<VectorXd> ground_truth;
   string line;
 
-  bool radar_data = true;
-  int n_meas = 0;
-
   // prep the measurement packages (each line represents a measurement at a
   // timestamp)
-  while (getline(in_file_, line)) {
+  while (getline(in_file_, line) && n_meas != 0) {
     Measurement *m;
     istringstream iss(line);
 
@@ -191,12 +184,12 @@ int main(int argc, char* argv[]) {
         gt  << x_gt, y_gt, vx_gt, vy_gt;
         ground_truth.push_back(gt);
 
-        n_meas++;
+        n_meas--;
     }
   }
 
   // Create a UKF instance
-  UnscentedKalmanFilter ukf(std_a, std_yawdd);
+  UnscentedKalmanFilter ukf(std_a, std_yawdd, debug);
 
   size_t number_of_measurements = measurements.size();
 
@@ -211,7 +204,8 @@ int main(int argc, char* argv[]) {
     // Call the UKF-based fusion
     Measurement *m = measurements[k];
     
-    std::cout << k << std::endl;
+    if (debug)
+        std::cout << k << std::endl;
     
     double nis = ukf.ProcessMeasurement(m);
 
