@@ -1,7 +1,10 @@
 #include "Eigen/Dense"
 #include "MeasurementFactory.h"
 #include "Measurement.h"
+#include "Sensor.h"
 #include <sstream>
+#include <algorithm>
+#include <iostream>
 
 using Eigen::VectorXd;
 using std::string;
@@ -9,25 +12,35 @@ using std::string;
 // static initializer of the factory instance
 MeasurementFactory *MeasurementFactory::instance_ = 0;
 
-Measurement *MeasurementFactory::CreateMeasurement(std::istringstream &iss) {
+Measurement *MeasurementFactory::CreateMeasurement(std::istringstream &iss, const SensorContainer &sensors) {
 
     string sensor_type;
+    const Sensor *sensor = 0;
+    SensorContainer::iterator si;
     long timestamp;
-    VectorXd measurements;
 
     iss >> sensor_type;
 
-    if (sensor_type.compare("L") == 0) {
+    try {
+        sensor = sensors.at(sensor_type);
+    } catch (const std::out_of_range &e) {
+        // discard measurement because sensor not valid
+   	//std::cout << "Invalid sensor type" << std::endl;
+        return 0;
+    }
+
+    VectorXd measurements(sensor->df_);
+
+    if (dynamic_cast<const LidarSensor*>(sensor) != 0) {
       float px;
       float py;
-
+      
       iss >> px;
       iss >> py;
 
-      measurements = VectorXd(2);
       measurements << px, py;
 
-    } else if (sensor_type.compare("R") == 0) {
+    } else if (dynamic_cast<const RadarSensor*>(sensor) != 0) {
       float rho;
       float theta;
       float rho_dot;
@@ -36,23 +49,39 @@ Measurement *MeasurementFactory::CreateMeasurement(std::istringstream &iss) {
       iss >> theta;
       iss >> rho_dot;
 
-      measurements = VectorXd(3);
       measurements << rho, theta, rho_dot;
-    }
+    }   
 
     iss >> timestamp;
 
-    return CreateMeasurement(sensor_type, timestamp, measurements);
+    Measurement *m = CreateMeasurement(sensor, timestamp, measurements);
+
+    // read ground truth data and store it with the measurement
+    if (m) {
+
+        float x_gt;
+        float y_gt;
+        float vx_gt;
+        float vy_gt;
+        iss >> x_gt;
+        iss >> y_gt;
+        iss >> vx_gt;
+        iss >> vy_gt;
+	m->ground_truth_ = VectorXd(4);
+        m->ground_truth_  << x_gt, y_gt, vx_gt, vy_gt;
+    }
+
+    return m;
 }
 
-Measurement *MeasurementFactory::CreateMeasurement(string sensor_type, long timestamp, VectorXd measurements) {
+Measurement *MeasurementFactory::CreateMeasurement(const Sensor *sensor, long timestamp, VectorXd &measurements) {
 
     Measurement *m = 0; 
 
-    if (sensor_type.compare("L") == 0) {
-        m = new LidarMeasurement(timestamp, measurements);
-    } else if (sensor_type.compare("R") == 0) {
-        m = new RadarMeasurement(timestamp, measurements);
+    if (dynamic_cast<const LidarSensor*>(sensor) != 0) {
+        m = new LidarMeasurement(sensor, timestamp, measurements);
+    } else if (dynamic_cast<const RadarSensor*>(sensor) != 0) {
+        m = new RadarMeasurement(sensor, timestamp, measurements);
     }
 
     return m;

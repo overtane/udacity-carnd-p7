@@ -1,9 +1,9 @@
 
 #include "Eigen/Dense"
 #include "Measurement.h"
+#include "Sensor.h"
 #include "MeasurementFactory.h"
 #include "UnscentedKalmanFilter.h"
-#include "MeasurementPackage.h"
 #include "Tools.h"
 #include <vector>
 #include <iostream>
@@ -17,8 +17,7 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 
-static void usage();
-
+// LOCAL FUNCTIONS
 static void parse_arguments(int argc, char* argv[]);
 static void check_files(ifstream& in_file, string& in_name,
                  ofstream& out_file, string& out_name);
@@ -36,6 +35,19 @@ void usage() {
 	cout << "    output - path to prediction output file" << endl;
 }
 
+// CONSTANTS
+//
+// Sensor dependent measurement noise constants
+//
+// Laser
+const double std_laspx = 0.15;  // standard deviation position1 in m
+const double std_laspy = 0.15;  // standard deviation position2 in m;
+// Radar
+const double std_radr = 0.3;    // standard deviation radius in m
+const double std_radphi = 0.03; // standard deviation angle in rad
+const double std_radrd = 0.3;   // standard deviation radius change in m/s
+
+// GLOBALS
 bool use_lidar = false;
 bool use_radar = false;
 double std_a = 5.0;
@@ -44,6 +56,88 @@ string in_filename;
 string out_filename;
 int debug = 0;
 long n_meas = -1;
+
+int main(int argc, char* argv[]) {
+
+  parse_arguments(argc, argv);
+  ifstream in_file(in_filename.c_str(), ifstream::in);
+  ofstream out_file(out_filename.c_str(), ofstream::out);
+  check_files(in_file, in_filename, out_file, out_filename);
+
+  // Initialize covariance matrices of sensors
+  VectorXd radar_noise(3);
+  radar_noise << std_radr, std_radphi, std_radrd;
+  Sensor *radar = new RadarSensor("R", radar_noise); 
+  VectorXd lidar_noise(2);
+  lidar_noise << std_laspy, std_laspx;
+  Sensor *lidar = new LidarSensor("L", lidar_noise); 
+
+  if (debug>1) {
+      cout << "Radar covariance:\n" << radar->GetR() << endl;  
+      cout << "Lidar covariance:\n" << lidar->GetR() << endl;  
+  }
+ 
+  // Create sensor instances
+  //
+  // If a sensor is flagged out, its not included in sensor collection
+  // and all measurements of the sensor are discarded.
+  SensorContainer sensors;
+  if (use_radar)
+      sensors[radar->name_] = radar;  
+  if (use_lidar)
+      sensors[lidar->name_] = lidar;  
+
+  MeasurementFactory* mf = MeasurementFactory::GetInstance();
+  MeasurementContainer measurements;
+  string line;
+
+  // Read input file and fill measurement container
+  while (getline(in_file, line) && n_meas != 0) {
+    Measurement *m;
+    istringstream iss(line);
+
+    // create measurement from input line, and store it to container
+    m = mf->CreateMeasurement(iss, sensors);
+    if (m != 0) {
+        measurements.push_back(m);
+        n_meas--;
+    }
+  }
+  std::cout << "Number of measurements: " << measurements.size() << std::endl;
+  in_file.close();
+
+  // Create a UKF instance
+  UnscentedKalmanFilter ukf(std_a, std_yawdd, debug);
+
+  // Run the filter and get estimations
+  MeasurementContainer::iterator it;
+  int i;
+  for(it=measurements.begin(), i=0; it!=measurements.end(); it++, i++) {
+
+    Measurement *m = *it;
+    if (debug)
+        std::cout << i << std::endl;
+
+    ukf.ProcessMeasurement(m);
+
+    if (ukf.restart_)
+        std::cout << "Filter restarted at measurement " << i << std::endl;
+
+    out_file << *m; // output estimate 
+  }
+  out_file.close();
+
+
+  // Calculate accuracy and check consistency
+  //
+  cout << "Accuracy - RMSE:" << endl << Tools::CalculateRMSE(measurements) << endl;
+  cout << "Consistency - percentage above Chi^2(0.050):" << endl << Tools::CheckConsistency(measurements, sensors) << endl;
+  
+  cout << "Done!" << endl;
+  return 0;
+}
+
+
 
 void parse_arguments(int argc, char* argv[]) {
  
@@ -115,139 +209,4 @@ void check_files(ifstream& in_file, string& in_name,
   }
 }
 
-int main(int argc, char* argv[]) {
 
-  parse_arguments(argc, argv);
-  ifstream in_file_(in_filename.c_str(), ifstream::in);
-  ofstream out_file_(out_filename.c_str(), ofstream::out);
-  check_files(in_file_, in_filename, out_file_, out_filename);
-
-  /**********************************************
-   *  Set Measurements                          *
-   **********************************************/
-
-  // Initialize covariance matrices for different sensor types
-  // Laser measurement noise standard deviation position1 in m
-  double std_laspx = 0.15;
-
-  // Laser measurement noise standard deviation position2 in m
-  double std_laspy = 0.15;
-
-  // Radar measurement noise standard deviation radius in m
-  double std_radr = 0.3;
-
-  // Radar measurement noise standard deviation angle in rad
-  double std_radphi = 0.03;
-
-  // Radar measurement noise standard deviation radius change in m/s
-  double std_radrd = 0.3;
-
-  VectorXd r_radar(3);
-  r_radar << std_radr, std_radphi, std_radrd;
-  RadarMeasurement::SetR(r_radar);
-  VectorXd r_lidar(2);
-  r_lidar << std_laspy, std_laspx;
-  LidarMeasurement::SetR(r_lidar);
-
-  if (debug>1) {
-      cout << "Radar covariance:\n" << RadarMeasurement::R_ << endl;  
-      cout << "Lidar covariance:\n" << LidarMeasurement::R_ << endl;  
-  }
-
-  MeasurementFactory* mf = MeasurementFactory::GetInstance();
-
-  vector<MeasurementPackage> measurement_pack_list;
-  vector<Measurement*> measurements;
-  vector<VectorXd> ground_truth;
-  string line;
-
-  // prep the measurement packages (each line represents a measurement at a
-  // timestamp)
-  while (getline(in_file_, line) && n_meas != 0) {
-    Measurement *m;
-    istringstream iss(line);
-
-    m = mf->CreateMeasurement(iss);
-    if (m != 0) {
-        measurements.push_back(m);
-
-        // read ground truth data to compare later
-        float x_gt;
-        float y_gt;
-        float vx_gt;
-        float vy_gt;
-        iss >> x_gt;
-        iss >> y_gt;
-        iss >> vx_gt;
-        iss >> vy_gt;
-        VectorXd gt(4);
-        gt  << x_gt, y_gt, vx_gt, vy_gt;
-        ground_truth.push_back(gt);
-
-        n_meas--;
-    }
-  }
-
-  // Create a UKF instance
-  UnscentedKalmanFilter ukf(std_a, std_yawdd, debug);
-
-  size_t number_of_measurements = measurements.size();
-
-  std::cout << "Number of measurements: " << number_of_measurements << std::endl;
-
-  vector<VectorXd> estimations;
-
-  // start filtering from the second frame (the speed is unknown in the first
-  // frame)
-  for (size_t k = 0; k < number_of_measurements; ++k) {
-
-    // Call the UKF-based fusion
-    Measurement *m = measurements[k];
-    
-    if (debug)
-        std::cout << k << std::endl;
-    
-    double nis = ukf.ProcessMeasurement(m);
-
-    //cout << m->measurements_.transpose() << endl;
-    //cout << ukf.x_.transpose() << endl;
-
-    // output the estimation
-    out_file_ << nis << "\t"; // nis
-    out_file_ << ukf.x_(0) << "\t"; // pos1 - est
-    out_file_ << ukf.x_(1) << "\t"; // pos2 - est
-    out_file_ << ukf.x_(2) * cos(ukf.x_(3)) << "\t"; // vel1
-    out_file_ << ukf.x_(2) * sin(ukf.x_(3)) << "\t"; // vel2
-    //out_file_ << ukf.x_(2) << "\t"; // vel_abs -est
-    //out_file_ << ukf.x_(3) << "\t"; // yaw_angle -est
-    //out_file_ << ukf.x_(4) << "\t"; // yaw_rate -est
-
-    // output the measurements
-    out_file_ << *m;
-
-    // output the ground truth packages
-    out_file_ << ground_truth[k](0) << "\t";
-    out_file_ << ground_truth[k](1) << "\t";
-    out_file_ << ground_truth[k](2) << "\t";
-    out_file_ << ground_truth[k](3) << "\t";
-  
-    VectorXd x(4);
-    x << ukf.x_(0), ukf.x_(1),ukf.x_(2)*cos(ukf.x_(3)), ukf.x_(2)*sin(ukf.x_(3)); // TODO: vx and v
-    estimations.push_back(x);
-  }
-
-  // compute the accuracy (RMSE)
-  cout << "Accuracy - RMSE:" << endl << Tools::CalculateRMSE(estimations, ground_truth) << endl;
-
-  // close files
-  if (out_file_.is_open()) {
-    out_file_.close();
-  }
-
-  if (in_file_.is_open()) {
-    in_file_.close();
-  }
-
-  cout << "Done!" << endl;
-  return 0;
-}

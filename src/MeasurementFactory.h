@@ -2,6 +2,7 @@
 #define _MEASUREMENT_FACTORY_H_
 
 #include "Eigen/Dense"
+#include "Sensor.h"
 #include <sstream>
 
 
@@ -26,8 +27,8 @@ private:
 public:
     virtual ~MeasurementFactory() {};
 
-    Measurement *CreateMeasurement(std::istringstream &);
-    Measurement *CreateMeasurement(string sensor, long timestamp, VectorXd measurement);
+    Measurement *CreateMeasurement(std::istringstream &, const SensorContainer &sensors);
+    Measurement *CreateMeasurement(const Sensor *sensor, long timestamp, VectorXd &measurement);
 
     static MeasurementFactory *GetInstance();
 };

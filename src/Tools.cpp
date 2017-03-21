@@ -1,3 +1,5 @@
+#include "Sensor.h"
+#include "Measurement.h"
 #include "Tools.h"
 #include <math.h>
 #include <iostream>
@@ -26,9 +28,97 @@ double Tools::NormalizeAngle(double a) {
 #endif
 }
 
-double Tools::CalculateNIS(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S) {
-  VectorXd z_diff = z - z_pred;
-  return z_diff.transpose() * S.inverse() * z_diff;
+// chi squared 5% limit per degrees of freedom
+const static double ChiSquared5[] = {3.841, 5.991, 7.815, 9.488, 11.070}; 
+
+VectorXd Tools::CheckConsistency(const MeasurementContainer measurements,  const SensorContainer sensors) {
+    
+    VectorXd result(sensors.size());
+   
+    struct Totals {
+        int n;
+        int tot;
+    };
+
+    std::map<string, Totals *> totals;
+
+    // Add all sensors to total map
+    for (SensorContainer::const_iterator it=sensors.begin(); it!=sensors.end(); ++it) {
+	Totals *t = new Totals;
+	t->n = t->tot = 0;
+	string name = it->first;
+        totals[name] = t;
+    }
+
+    // Handle measurements
+    // Count total number of measurements per sensor, and number of estimates above consistency limit
+    for (MeasurementContainer::const_iterator it=measurements.begin(); it!=measurements.end(); ++it) {
+	const Measurement *m = *it;
+	const Sensor *s = m->sensor_;
+        Totals *t = totals[s->name_];
+	t->tot++;
+	if (m->nis_ > ChiSquared5[s->df_-1]) { // increment based on degrees of freedom per sensor.
+            //std::cout << m->nis_ << std::endl;
+            t->n++;
+	}
+    }
+
+    // Calculate consistency value
+    std::map<string, Totals *>::iterator it;
+    int i;
+    for (it=totals.begin(), i=0; it!=totals.end(); it++,i++) {
+        Totals *t = it->second;
+        result(i) = (t->n*1.0)/t->tot;
+	delete it->second;
+    }
+    
+    return result;
+}
+
+VectorXd Tools::CalculateRMSE(const MeasurementContainer measurements) {
+
+    VectorXd rmse(7); // [px, py, vx, vy, v, psi, psi dot]T
+    rmse.fill(0.0);
+    
+    //accumulate squared residuals
+    for (MeasurementContainer::const_iterator it=measurements.begin(); it!=measurements.end(); ++it) {
+
+        VectorXd esc(7);                      // calculated estimates
+        VectorXd eso = (*it)->estimate_;      // original estimate
+        VectorXd gtc(7);                      // calculated ground truth
+        VectorXd gto = (*it)->ground_truth_;  // original ground truth
+
+        gtc(0) = gto(0); 
+	gtc(1) = gto(1);
+        gtc(2) = gto(2);
+	gtc(3) = gto(3);
+	double s = (gtc(3)<0)?-1.0:1.0; // angle sign
+        gtc(4) = sqrt(gto(2)*gto(2)+gto(3)*gto(3));
+	gtc(5) = (fabs(gtc(4))<0.0001) ? M_PI/2 : acos(gto(2)/gtc(4));
+	gtc(5) *= s;
+	gtc(6) = 0;
+
+        esc(0) = eso(0);
+	esc(1) = eso(1);
+	esc(2) = eso(2) * cos(eso(3));
+	esc(3) = eso(2) * sin(eso(3));
+	esc(4) = eso(2);
+	esc(5) = eso(3);
+	esc(6) = eso(4);
+
+        VectorXd residual = esc- gtc;
+        
+        // coefficient-wise multiplication
+        residual = residual.array()*residual.array();
+        rmse += residual;
+    }
+    
+    // calculate the mean
+    rmse = rmse / measurements.size();
+    //calculate the squared root
+    rmse = rmse.array().sqrt();
+
+    return rmse.head(4);  // for now, return only px, py, vx, vy
 }
 
 VectorXd Tools::CalculateRMSE(const std::vector<VectorXd> &estimations,

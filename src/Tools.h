@@ -2,10 +2,13 @@
 #define TOOLS_H_
 
 #include "Eigen/Dense"
+#include "Sensor.h"
+#include "Measurement.h"
 #include <vector>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+
 
 class Tools {
 
@@ -29,12 +32,13 @@ public:
   static double NormalizeAngle(double a);
 
   /** 
-   * Calculate normalized innovation squared 
+   * Check model consistency values 
    */
-  static double CalculateNIS(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S);
+  static VectorXd CheckConsistency(const MeasurementContainer measurements,  const SensorContainer sensors);
   /**
   * A helper method to calculate RMSE.
   */
+  static VectorXd CalculateRMSE(const MeasurementContainer measurements);
   static VectorXd CalculateRMSE(const std::vector<VectorXd> &estimations, const std::vector<VectorXd> &ground_truth);
 
   /**
