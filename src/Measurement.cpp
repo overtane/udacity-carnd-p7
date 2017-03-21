@@ -51,9 +51,9 @@ VectorXd LidarMeasurement::InitializeState(int n) const {
 
     VectorXd x(n);
     // initialize the state vector
-    x.fill(0.001);
-    x(0) = (fabs(measurements_[0]) < 0.001) ? 0.001 : measurements_[0];
-    x(1) = (fabs(measurements_[1]) < 0.001) ? 0.001 : measurements_[1];
+    x.fill(1.0);
+    x(0) = (fabs(measurements_[0]) < 0.01) ? 0.01 : measurements_[0];
+    x(1) = (fabs(measurements_[1]) < 0.01) ? 0.01 : measurements_[1];
     return x;
 }
 
@@ -74,11 +74,11 @@ VectorXd RadarMeasurement::InitializeState(int n) const {
 
     VectorXd x(n);
     // initialize the state vector
-    x.fill(0.001);
+    x.fill(1.0);
     double rho = measurements_[0];
     double phi = measurements_[1];
-    x(0) = (fabs(rho)<0.001) ? 0.001 : rho * cos(phi);
-    x(1) = (fabs(rho)<0.001) ? 0.001 : rho * sin(phi);
+    x(0) = (fabs(rho)<0.001) ? 0.01 : rho * cos(phi);
+    x(1) = (fabs(rho)<0.001) ? 0.01 : rho * sin(phi);
     x(2) = measurements_[2];
     x(3) = phi;
     return x;
