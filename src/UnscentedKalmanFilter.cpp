@@ -10,12 +10,13 @@ using namespace std;
 /**
  * Initializes Unscented Kalman filter
  */
-UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int debug) :
+UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int pred_rate, int debug) :
     std_a_(std_a),
     std_yawdd_(std_yawdd),
+    prediction_rate_(pred_rate),
     debug_(debug),	
     is_initialized_(false),
-    n_x_(5)
+    n_x_(5) // TODO paramterize this to get more general solution
 {
   // if this is false, laser measurements will be ignored (except during init)
   use_laser_ = false;
@@ -51,8 +52,17 @@ void UnscentedKalmanFilter::NormalizeState(VectorXd &x) {
 void UnscentedKalmanFilter::InitializeMeasurement(const Measurement *m) {
     
     // initialize the covariance matrix
-    P_ = MatrixXd::Identity(n_x_, n_x_); 
+    P_.fill(0.0); 
+    for (int i=0; i<n_x_; ++i) {
+    	    P_(i,i) = 0.1;
+    }
     x_ = m->InitializeState(n_x_);
+
+    // initial state (px,py) == (0,0) does not make sense
+    if (fabs(x_(0))>0.001 && fabs(x_(1))>0.001)
+        is_initialized_ = true;
+    else if (debug_)
+	std::cout << "Skip initial measurement: \n" << m->measurements_ << std::endl; 
     return;
 }
 /**
@@ -70,7 +80,10 @@ void UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
       InitializeMeasurement(m);
       m->estimate_ = x_;
       previous_measurement_ = m;
-      is_initialized_ = true;
+      if ((debug_ >1) && is_initialized_) {
+	std::cout << "Initial state x: \n" << x_ << std::endl;
+	std::cout << "Initial covariance P: \n" << P_ << std::endl;
+      }	
       return;
   }
 
@@ -80,11 +93,12 @@ void UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
 
   // Compute the time elapsed between the current and previous measurements, in seconds
     double dt = (m->timestamp_ - previous_measurement_->timestamp_) / 1000000.0;	
-    double tt = dt;
+    double rdt = dt; // remaining delta time
+    double pred_int = (prediction_rate_>0) ? 1.0/prediction_rate_ : rdt; // prediction_interval
 
     do {
   
-        dt = (tt > 0.05) ? 0.05 : tt;
+        dt = (rdt > pred_int) ? pred_int : rdt;
 
         try {
              Prediction(dt);
@@ -98,9 +112,9 @@ void UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
             Prediction(dt);
         }
 
-        tt -= dt;
+        rdt -= dt;
 
-    } while (tt > 0.0);
+    } while (rdt > 0.0);
 
 
   /*****************************************************************************
@@ -222,6 +236,10 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
         Xsig_aug.col(k) = x_aug - s * L.col(i);
     }
 
+    if (debug_ > 2) {
+        std::cout << "L:\n" << L << std::endl;
+        std::cout << "Xsig_aug:\n" << Xsig_aug << std::endl;
+    }
     return ret;
 }
 
@@ -292,9 +310,11 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
     P = P + weights_(i) * x_diff * x_diff.transpose();
   }
 
-  if (debug_ > 1) {
+  if (debug_ > 2) {
+    std::cout << "x pred:\n" << x << std::endl;
+    std::cout << "P pred:\n" << P << std::endl;
     Eigen::EigenSolver<MatrixXd> es(P);
-    cout << "Eigenvalues of P pred:" << endl << es.eigenvalues() << endl;
+    std::cout << "Eigenvalues of P pred:\n" << es.eigenvalues() << std::endl;
   }
 }
  

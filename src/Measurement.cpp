@@ -51,9 +51,11 @@ VectorXd LidarMeasurement::InitializeState(int n) const {
 
     VectorXd x(n);
     // initialize the state vector
-    x.fill(1.0);
-    x(0) = (fabs(measurements_[0]) < 0.01) ? 0.01 : measurements_[0];
-    x(1) = (fabs(measurements_[1]) < 0.01) ? 0.01 : measurements_[1];
+    x.fill(0.1);
+    x(0) = measurements_[0];
+    x(1) = measurements_[1];
+    //x(0) = (fabs(measurements_[0]) < 0.01) ? 0.01 : measurements_[0];
+    //x(1) = (fabs(measurements_[1]) < 0.01) ? 0.01 : measurements_[1];
     return x;
 }
 
@@ -77,10 +79,15 @@ VectorXd RadarMeasurement::InitializeState(int n) const {
     x.fill(1.0);
     double rho = measurements_[0];
     double phi = measurements_[1];
-    x(0) = (fabs(rho)<0.001) ? 0.01 : rho * cos(phi);
-    x(1) = (fabs(rho)<0.001) ? 0.01 : rho * sin(phi);
-    x(2) = measurements_[2];
-    x(3) = phi;
+    x(0) = rho * cos(phi);
+    x(1) = rho * sin(phi);
+    //x(0) = (fabs(rho)<0.001) ? 0.01 : rho * cos(phi);
+    //x(1) = (fabs(rho)<0.001) ? 0.01 : rho * sin(phi);
+    // TODO: redo equations here:
+    // v: rho dot is actually a predo equations here:rojection of v to vector rho.  
+    // psi: the is angle between vy and v
+    //x(2) = measurements_[2];
+    //x(3) = phi; 
     return x;
 }
 

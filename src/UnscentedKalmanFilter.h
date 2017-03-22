@@ -16,6 +16,9 @@ public:
 
   bool restart_;
 
+  ///* the minimum rate predictions are run.
+  double prediction_rate_;
+
   ///* initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
 
@@ -69,7 +72,7 @@ public:
   /**
    * Constructor
    */
-  UnscentedKalmanFilter(double, double, int);
+  UnscentedKalmanFilter(double, double, int, int);
 
   /**
    * Destructor

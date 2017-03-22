@@ -23,10 +23,11 @@ static void check_and_open_files(ifstream& in_file, string& in_name,
                  ofstream& out_file, string& out_name);
 
 void usage() {
-	cout << "UnscentedKF [-l|-r|-n <in>|-a <double>|-y <double>|-d|-D] input output" << endl;
+	cout << "UnscentedKF [-l|-r|-n <in>|-p <int>|-a <double>|-y <double>|-d|-D] input output" << endl;
 	cout << "    -l - include lidar measurements" << endl;
 	cout << "    -r - include radar measurements" << endl;
 	cout << "    (omitting -l and -r includes all measurements)" << endl;
+	cout << "    -p <int> - minimum rate predictions are run" << endl;
 	cout << "    -a <double> - stardard deviation of longitudal acceleration noise" << endl;
 	cout << "    -y <double> - standard deviation of yaw acceleration noise" << endl;
 	cout << "    -d - add some debugging output (add more d's to get more output)" << endl;
@@ -56,7 +57,7 @@ string in_filename;      // input filename
 string out_filename;     // output filename
 int debug = 0;           // debug output level
 long n_meas = -1;        // number of measurements to use, negative value == use all
-
+int pred_rate = 20;       // prediction rate, 0 == use measurement interval
 int main(int argc, char* argv[]) {
 
   parse_arguments(argc, argv);
@@ -118,7 +119,7 @@ int main(int argc, char* argv[]) {
   in_file.close();
 
   // Create a filter instance
-  UnscentedKalmanFilter ukf(std_a, std_yawdd, debug);
+  UnscentedKalmanFilter ukf(std_a, std_yawdd, pred_rate, debug);
 
   // Run measurement through the filter and get estimations
   MeasurementContainer::iterator it;
@@ -127,7 +128,7 @@ int main(int argc, char* argv[]) {
 
     Measurement *m = *it;
     if (debug)
-        std::cout << i << std::endl;
+        std::cout << "--- START MEASUREMENT: " << i << " -------------------------------" << std::endl;
 
     ukf.ProcessMeasurement(m);
 
@@ -154,7 +155,7 @@ void parse_arguments(int argc, char* argv[]) {
  
     int opt;
 
-    while ((opt = getopt(argc, argv, "n:dDlra:y:")) != -1) {
+    while ((opt = getopt(argc, argv, "p:n:dDlra:y:")) != -1) {
         switch (opt) {
         case 'l':
             use_lidar = true;
@@ -164,6 +165,9 @@ void parse_arguments(int argc, char* argv[]) {
             break;
         case 'd':
             debug++;
+            break;
+        case 'p':
+	    pred_rate = atoi(optarg);
             break;
         case 'n':
 	    n_meas = atoi(optarg);
