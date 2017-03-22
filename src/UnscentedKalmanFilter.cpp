@@ -15,24 +15,23 @@ UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int
     std_yawdd_(std_yawdd),
     prediction_rate_(pred_rate),
     debug_(debug),	
+
+    restart_(false),
     is_initialized_(false),
-    n_x_(5) // TODO paramterize this to get more general solution
+
+    n_x_(5),           // TODO parametrize this to get more general solution
+    n_aug_(n_x_+2),
+    lambda_(3-n_aug_), // TODO: how is lambda defined?
+    n_sigma_(2*n_aug_+1),
+
+    previous_measurement_(0),
+    current_sensor_(0)
 {
-  // if this is false, laser measurements will be ignored (except during init)
-  use_laser_ = false;
-
-  // if this is false, radar measurements will be ignored (except during init)
-  use_radar_ = true;
-
   // initial state vector
   x_ = VectorXd(n_x_);
 
   // initial covariance matrix
   P_ = MatrixXd(n_x_, n_x_);
-
-  n_aug_ = n_x_ + 2;
-  lambda_ = 3 - n_aug_; // TODO: how is lambda defined?
-  n_sigma_ = 2 * n_aug_ + 1;
 
   Xsig_pred_ = MatrixXd(n_x_, n_sigma_); 
 
@@ -45,7 +44,7 @@ UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int
   
 }
 
-void UnscentedKalmanFilter::NormalizeState(VectorXd &x) {
+void UnscentedKalmanFilter::NormalizeState(VectorXd &x) const {
     x(3) = Tools::NormalizeAngle(x(3));
 }
 
@@ -108,7 +107,7 @@ void UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
             // restart the filter using previous measurement as an initializer.
             InitializeMeasurement(previous_measurement_);
             // Redo prediction using the current measurement
-            // We don't get exception this time, because intial P (identity) is positive definite.
+            // We don't get exception this time, because intial P is positive definite.
             Prediction(dt);
         }
 
@@ -168,7 +167,7 @@ double UnscentedKalmanFilter::Update(Measurement *m) {
   return m->NIS(z_pred, S);
 }
 
-void UnscentedKalmanFilter::GenerateSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig) {
+void UnscentedKalmanFilter::GenerateSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig) const {
 
     int n_x = x.rows();
 
@@ -187,7 +186,7 @@ void UnscentedKalmanFilter::GenerateSigmaPoints(const VectorXd &x, const MatrixX
     }
 }
 
-bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_aug) {
+bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, const MatrixXd &P, MatrixXd &Xsig_aug) const {
 
     bool ret = true;
     int n_x = x.rows();
@@ -243,7 +242,7 @@ bool UnscentedKalmanFilter::GenerateAugmentedSigmaPoints(const VectorXd &x, cons
     return ret;
 }
 
-void UnscentedKalmanFilter::SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixXd &Xsig_pred) {
+void UnscentedKalmanFilter::SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixXd &Xsig_pred) const {
 
   for (int i=0; i<n_sigma_; i++) {
 
@@ -289,7 +288,7 @@ void UnscentedKalmanFilter::SigmaPointPrediction(double delta_t, const MatrixXd 
   }
 }
 
-void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd &x, MatrixXd &P) {
+void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd &x, MatrixXd &P) const {
 
   x.fill(0.0);
   P.fill(0.0);
@@ -319,7 +318,7 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
 }
  
 void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pred, const MatrixXd &S, 
-		const MatrixXd &Xsig_pred, const MatrixXd &Zsig, VectorXd &x, MatrixXd &P) {
+		const MatrixXd &Xsig_pred, const MatrixXd &Zsig, VectorXd &x, MatrixXd &P) const {
 
    int n_z = z_pred.rows();	
    int n_x = x.rows();

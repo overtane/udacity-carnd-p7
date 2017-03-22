@@ -1,0 +1,74 @@
+Default Parameters:
+- std_a = 2.5
+- std_yawdd = 0.8
+- pred_rate = 20
+
+--- DATA SET 1 ---
+Sensors: Lidar Radar
+Number of measurements: 1224
+Accuracy - RMSE:
+0.0635188
+0.0727957
+ 0.557945
+ 0.564362
+Consistency - percentage above Chi^2(0.050):
+0.00163399
+  0.124183
+Done!
+
+Sensors: Radar
+Number of measurements: 612
+Accuracy - RMSE:
+ 0.11751
+0.133739
+0.620712
+0.626613
+Consistency - percentage above Chi^2(0.050):
+0.124183
+Done!
+
+Sensors: Lidar 
+Number of measurements: 612
+Accuracy - RMSE:
+0.0915957
+0.0775495
+ 0.660846
+ 0.607713
+Consistency - percentage above Chi^2(0.050):
+0.00490196
+Done!
+
+--- DATA SET 2 ---
+Sensors: Lidar Radar
+Number of measurements: 200
+Accuracy - RMSE:
+0.176146
+0.180731
+0.299565
+0.267969
+Consistency - percentage above Chi^2(0.050):
+0.02
+0.01
+Done!
+
+Sensors: Radar
+Number of measurements: 100
+Accuracy - RMSE:
+0.187099
+ 0.65345
+0.879191
+0.478368
+Consistency - percentage above Chi^2(0.050):
+0.01
+Done!
+
+Sensors: Lidar 
+Number of measurements: 100
+Accuracy - RMSE:
+0.205671
+0.188508
+0.397938
+0.276306
+Consistency - percentage above Chi^2(0.050):
+0.06
+Done!
