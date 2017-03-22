@@ -27,7 +27,23 @@ private:
 public:
     virtual ~MeasurementFactory() {};
 
-    Measurement *CreateMeasurement(std::istringstream &, const SensorContainer &sensors);
+    /**
+     * Create measurement from input stream
+     *
+     * Method initialized also ground thruth if it is present in the stream
+     *
+     * @param iss Input string stream
+     * @param sensors Sensor collection. There must exist a sensor instance that correspond to
+     *                measurement. In other case, measurement is not instantiated 
+     */
+    Measurement *CreateMeasurement(std::istringstream &iss, const SensorContainer &sensors);
+    /**
+     * Create measurement for known attributes
+     *
+     * @param sensor Sensor instance pointer
+     * @param timestamp Time of the measurement
+     * @parma measurements Measurement values
+     */
     Measurement *CreateMeasurement(const Sensor *sensor, long timestamp, VectorXd &measurement);
 
     static MeasurementFactory *GetInstance();

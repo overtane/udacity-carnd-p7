@@ -58,6 +58,7 @@ string out_filename;     // output filename
 int debug = 0;           // debug output level
 long n_meas = -1;        // number of measurements to use, negative value == use all
 int pred_rate = 20;       // prediction rate, 0 == use measurement interval
+
 int main(int argc, char* argv[]) {
 
   parse_arguments(argc, argv);

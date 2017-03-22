@@ -97,21 +97,22 @@ void UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
 
     do {
   
-        dt = (rdt > pred_int) ? pred_int : rdt;
+        double t = (rdt > pred_int) ? pred_int : rdt;
 
         try {
-             Prediction(dt);
+             Prediction(t);
         } catch (std::range_error e) {
             restart_ = true;
-       	    // If convariance matrix is non positive definite (because of numerical instability?),
+	    // If convariance matrix is non positive definite (because of numerical instability?),
             // restart the filter using previous measurement as an initializer.
             InitializeMeasurement(previous_measurement_);
             // Redo prediction using the current measurement
             // We don't get exception this time, because intial P is positive definite.
-            Prediction(dt);
+            Prediction(t);
+       	    rdt = dt; // reset delta time
         }
 
-        rdt -= dt;
+        rdt -= t;
 
     } while (rdt > 0.0);
 
