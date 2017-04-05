@@ -10,10 +10,11 @@ using namespace std;
 /**
  * Initializes Unscented Kalman filter
  */
-UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int pred_rate, int debug) :
+UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int pred_rate, bool modified, int debug) :
     std_a_(std_a),
     std_yawdd_(std_yawdd),
     prediction_rate_(pred_rate),
+    modified_(modified),
     debug_(debug),	
 
     restart_(false),
@@ -301,10 +302,14 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
   NormalizeState(x);
 
   // predicted state covariance matrix
-  for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
+  for (int i=(modified_)?1:0; i<n_sigma_; i++) {  // iterate over sigma points
 
     // state difference
-    VectorXd x_diff = Xsig_pred.col(i) - x;
+    VectorXd x_diff;
+    if (modified_)
+        x_diff = Xsig_pred.col(i) - Xsig_pred.col(0);
+    else
+        x_diff = Xsig_pred.col(i) - x;
     NormalizeState(x_diff);
 
     P = P + weights_(i) * x_diff * x_diff.transpose();

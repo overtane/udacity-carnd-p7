@@ -2,14 +2,16 @@
 #include "Sensor.h"
 #include "Tools.h"
 #include <string>
+#include <iostream>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::string;
 
-Sensor::Sensor(string name, const VectorXd& noise, int df) :
+Sensor::Sensor(string name, const VectorXd& noise, int df, bool modified) :
 	name_(name),
-	df_(df)
+	df_(df),
+	modified_(modified)
 {
     SetR(noise);
 }
@@ -26,8 +28,8 @@ const MatrixXd &Sensor::GetR() const {
     return R_;
 }
 
-LidarSensor::LidarSensor(string name, const VectorXd& noise) :
-        Sensor(name, noise, 2)
+LidarSensor::LidarSensor(string name, const VectorXd& noise, bool modified) :
+        Sensor(name, noise, 2, modified)
 {}
 
 void LidarSensor::NormalizeMeasurement(VectorXd &x) const {
@@ -54,9 +56,13 @@ void LidarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &
     }
 
     // measurement covariance matrix S
-    for (int i=0; i<n_sigma; i++) {  // 2n+1 sigma points
+    for (int i=(modified_)?1:0; i<n_sigma; i++) {  // 2n+1 sigma points
         // residual
-        VectorXd z_diff = Zsig.col(i) - z_pred;
+	VectorXd z_diff;
+	if (modified_)
+            z_diff = Zsig.col(i) - Zsig.col(0);
+	else
+	    z_diff = Zsig.col(i) - z_pred;
         S = S + weights(i) * z_diff * z_diff.transpose();
     }
 
@@ -64,8 +70,8 @@ void LidarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &
 }
 
 
-RadarSensor::RadarSensor(string name, const VectorXd& noise) :
-        Sensor(name, noise, 3)
+RadarSensor::RadarSensor(string name, const VectorXd& noise, bool modified) :
+        Sensor(name, noise, 3, modified)
 {}
 
 void RadarSensor::NormalizeMeasurement(VectorXd &x) const {
@@ -106,9 +112,13 @@ void RadarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &
     }
 
     // measurement covariance matrix S
-    for (int i=0; i<n_sigma; i++) {  // 2n+1 sigma points
+    for (int i=(modified_)?1:0; i<n_sigma; i++) {  // 2n+1 sigma points
         // residual
-        VectorXd z_diff = Zsig.col(i) - z_pred;
+        VectorXd z_diff;
+	if (modified_)
+            z_diff = Zsig.col(i) - Zsig.col(0);
+	else
+	    z_diff = Zsig.col(i) - z_pred;
         z_diff(1) = Tools::NormalizeAngle(z_diff(1));
 
         S = S + weights(i) * z_diff * z_diff.transpose();

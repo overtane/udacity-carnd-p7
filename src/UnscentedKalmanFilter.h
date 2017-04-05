@@ -21,6 +21,9 @@ public:
   ///* the minimum rate predictions are run.
   double prediction_rate_;
 
+  ///* use modifications, false = no, true = modified state process matrix
+  bool modified_;
+
   ///* Debugging level, 1: print intermediate phases, 2: print intermediate matrices, 3: print even more matrices
   int debug_;
 
@@ -65,9 +68,10 @@ public:
    * @param std_a Process noise standard deviation longitudinal acceleration in m/s^2
    * @param std_yawdd Process noise standard deviation yaw acceleration in rad/s^2
    * @param pred_rate Minimum rate to run predictions
+   * @param modified Use algorithm modifications for predicted state covariance matrix
    * @param debug Debugging level
    */
-  UnscentedKalmanFilter(double std_a, double std_yawdd, int pred_rate, int debug);
+  UnscentedKalmanFilter(double std_a, double std_yawdd, int pred_rate, bool modified, int debug);
 
   /**
    * Destructor

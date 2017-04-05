@@ -28,16 +28,17 @@ public:
     /**
      * Constructor
      */
-    Sensor(string name, const VectorXd& noise, int df);
+    Sensor(string name, const VectorXd& noise, int df, bool modified);
     /**
      * Destructor
      */
     virtual ~Sensor() {}
  
     ///* Sensor name
-    string name_;
+    const string name_;
+
     ///* Degrees of freedom, for consistency calculations
-    int df_;
+    const int df_;
 
 protected:
 
@@ -60,6 +61,9 @@ protected:
      */
     virtual void NormalizeMeasurement(VectorXd &z) const = 0;
 
+    ///* use modified measurement covariance matrix
+    const bool modified_;
+
 private:
     ///* Noise matrix
     MatrixXd R_;
@@ -75,7 +79,7 @@ public:
     void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S) const;
     void NormalizeMeasurement(VectorXd &) const;
  
-    LidarSensor(string name, const VectorXd& noise);
+    LidarSensor(string name, const VectorXd& noise, bool modified);
     virtual ~LidarSensor() {}
 
 };
@@ -87,7 +91,7 @@ public:
     void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S) const;
     void NormalizeMeasurement(VectorXd &) const;
 
-    RadarSensor(string name, const VectorXd& noise);
+    RadarSensor(string name, const VectorXd& noise, bool modified);
     virtual ~RadarSensor() {}
 };
 

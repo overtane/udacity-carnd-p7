@@ -32,6 +32,8 @@ void usage() {
 	cout << "    -y <double> - standard deviation of yaw acceleration noise" << endl;
 	cout << "    -d - add some debugging output (add more d's to get more output)" << endl;
 	cout << "    -n <int> - number of measurements, use only <int> first measurements of the data" << endl;
+	cout << "    -m use modified version of the UKF algorithm for state covariance matrix" << endl;
+	cout << "    -M use modified version of the UKF algorithm also for measurement covariance matrix" << endl;
 	cout << "    input - path to measurement input file" << endl;
 	cout << "    output - path to prediction output file" << endl;
 }
@@ -49,15 +51,17 @@ const double std_radphi = 0.03; // standard deviation angle in rad
 const double std_radrd = 0.3;   // standard deviation radius change in m/s
 
 // GLOBALS
-bool use_lidar = false;  // use lidar data
-bool use_radar = false;  // use radar data
-double std_a = 2.5;      // process noise: std deviation of acceleration
-double std_yawdd = 0.8;  // process noise: std deviation of yaw
-string in_filename;      // input filename
-string out_filename;     // output filename
-int debug = 0;           // debug output level
-long n_meas = -1;        // number of measurements to use, negative value == use all
-int pred_rate = 20;       // prediction rate, 0 == use measurement interval
+bool use_lidar = false;      // use lidar data
+bool use_radar = false;      // use radar data
+double std_a = 2.5;          // process noise: std deviation of acceleration
+double std_yawdd = 0.8;      // process noise: std deviation of yaw
+string in_filename;          // input filename
+string out_filename;         // output filename
+int debug = 0;               // debug output level
+long n_meas = -1;            // number of measurements to use, negative value == use all
+int pred_rate = 20;          // prediction rate, 0 == use measurement interval
+bool state_modified = false; // use of state covariance matrix  modifications
+bool meas_modified = false;  // use of measurement covariance matrix modifications
 
 int main(int argc, char* argv[]) {
 
@@ -73,8 +77,8 @@ int main(int argc, char* argv[]) {
   lidar_noise << std_laspy, std_laspx;
 
   // Create sensor instances
-  Sensor *radar = new RadarSensor("R", radar_noise); 
-  Sensor *lidar = new LidarSensor("L", lidar_noise); 
+  Sensor *radar = new RadarSensor("R", radar_noise, meas_modified); 
+  Sensor *lidar = new LidarSensor("L", lidar_noise, meas_modified); 
 
   // Create sensor collection
   //
@@ -120,7 +124,7 @@ int main(int argc, char* argv[]) {
   in_file.close();
 
   // Create a filter instance
-  UnscentedKalmanFilter ukf(std_a, std_yawdd, pred_rate, debug);
+  UnscentedKalmanFilter ukf(std_a, std_yawdd, pred_rate, state_modified, debug);
 
   // Run measurement through the filter and get estimations
   MeasurementContainer::iterator it;
@@ -156,13 +160,19 @@ void parse_arguments(int argc, char* argv[]) {
  
     int opt;
 
-    while ((opt = getopt(argc, argv, "p:n:dDlra:y:")) != -1) {
+    while ((opt = getopt(argc, argv, "mMp:n:dDlra:y:")) != -1) {
         switch (opt) {
         case 'l':
             use_lidar = true;
             break;
         case 'r':
             use_radar = true;
+            break;
+        case 'm':
+            state_modified = true;
+            break;
+        case 'M':
+            meas_modified = true;
             break;
         case 'd':
             debug++;

@@ -272,3 +272,34 @@ double Tools::NormalizeAngle(double a) {
  }
 ```
 
+* Algorithm modification
+
+(Added Apr 5th, 2017)
+
+When lambda is negative, the state covariance matrix may not meet semi-positive definite requirement.
+ 
+Added possibility to use modification from "A New Method for the Nonlinear Transformation of Means and Covariances in Filters and Estimators" by Simon Julier, Jeffrey Uhlmann, and Hugh F. Durrant-Whyte, IEEE TRANSACTIONS ON AUTOMATIC CONTROL, VOL. 45, NO. 3, MARCH 2000
+
+Look at function `UnscentedKalmanFilter::PredictMeanAndCovariance()`: 
+
+```
+// predicted state covariance matrix
+for (int i=(modified_)?1:0; i<n_sigma_; i++) {  // iterate over sigma points
+
+  // state difference
+  VectorXd x_diff;
+  if (modified_)
+      x_diff = Xsig_pred.col(i) - Xsig_pred.col(0);
+  else
+      x_diff = Xsig_pred.col(i) - x;
+  NormalizeState(x_diff);
+
+  P = P + weights_(i) * x_diff * x_diff.transpose();
+}
+```
+
+Also, possible to apply same method to measurement covariance matrices (`Sensor` -class).
+ 
+These features are available with command line options -m and -M, which set the modified flags.
+ 
+
