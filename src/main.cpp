@@ -27,13 +27,13 @@ void usage() {
 	cout << "    -l - include lidar measurements" << endl;
 	cout << "    -r - include radar measurements" << endl;
 	cout << "    (omitting -l and -r includes all measurements)" << endl;
-	cout << "    -p <int> - minimum rate predictions are run" << endl;
+	cout << "    -p <int> - minimum rate predictions are run, -p 0 - use measurement rate" << endl;
 	cout << "    -a <double> - stardard deviation of longitudal acceleration noise" << endl;
 	cout << "    -y <double> - standard deviation of yaw acceleration noise" << endl;
 	cout << "    -d - add some debugging output (add more d's to get more output)" << endl;
 	cout << "    -n <int> - number of measurements, use only <int> first measurements of the data" << endl;
-	cout << "    -m use modified version of the UKF algorithm for state covariance matrix" << endl;
-	cout << "    -M use modified version of the UKF algorithm also for measurement covariance matrix" << endl;
+	cout << "    -m use modified version of the UKF algorithm for covariance matrix, -mm for extensive  modifications" << endl;
+	cout << "    -s <int> sigma point spreading factor, default = 3" << endl;
 	cout << "    input - path to measurement input file" << endl;
 	cout << "    output - path to prediction output file" << endl;
 }
@@ -60,8 +60,9 @@ string out_filename;         // output filename
 int debug = 0;               // debug output level
 long n_meas = -1;            // number of measurements to use, negative value == use all
 int pred_rate = 20;          // prediction rate, 0 == use measurement interval
-bool state_modified = false; // use of state covariance matrix  modifications
-bool meas_modified = false;  // use of measurement covariance matrix modifications
+int modified = 0;            // use of modified algoritm for covariance matrix calculations
+int spreading_factor = 3;    // spreading factor (n_aug + lambda)
+
 
 int main(int argc, char* argv[]) {
 
@@ -77,8 +78,8 @@ int main(int argc, char* argv[]) {
   lidar_noise << std_laspy, std_laspx;
 
   // Create sensor instances
-  Sensor *radar = new RadarSensor("R", radar_noise, meas_modified); 
-  Sensor *lidar = new LidarSensor("L", lidar_noise, meas_modified); 
+  Sensor *radar = new RadarSensor("R", radar_noise); 
+  Sensor *lidar = new LidarSensor("L", lidar_noise); 
 
   // Create sensor collection
   //
@@ -124,7 +125,7 @@ int main(int argc, char* argv[]) {
   in_file.close();
 
   // Create a filter instance
-  UnscentedKalmanFilter ukf(std_a, std_yawdd, pred_rate, state_modified, debug);
+  UnscentedKalmanFilter ukf(std_a, std_yawdd, spreading_factor, pred_rate, modified, debug);
 
   // Run measurement through the filter and get estimations
   MeasurementContainer::iterator it;
@@ -160,7 +161,7 @@ void parse_arguments(int argc, char* argv[]) {
  
     int opt;
 
-    while ((opt = getopt(argc, argv, "mMp:n:dDlra:y:")) != -1) {
+    while ((opt = getopt(argc, argv, "s:mMp:n:dDlra:y:")) != -1) {
         switch (opt) {
         case 'l':
             use_lidar = true;
@@ -169,13 +170,13 @@ void parse_arguments(int argc, char* argv[]) {
             use_radar = true;
             break;
         case 'm':
-            state_modified = true;
-            break;
-        case 'M':
-            meas_modified = true;
+            modified++;
             break;
         case 'd':
             debug++;
+            break;
+        case 's':
+	    spreading_factor = atoi(optarg);
             break;
         case 'p':
 	    pred_rate = atoi(optarg);

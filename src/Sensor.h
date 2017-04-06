@@ -28,7 +28,7 @@ public:
     /**
      * Constructor
      */
-    Sensor(string name, const VectorXd& noise, int df, bool modified);
+    Sensor(string name, const VectorXd& noise, int df);
     /**
      * Destructor
      */
@@ -53,16 +53,14 @@ protected:
      * @param Zsig Sigma points in measurement space (output)
      * @param z_pred Predicted measurment (output)
      * @param S Measurement covariance matrix (output)
+     * @modified Use modified algorithm for covariance matrix
      */
-    virtual void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S) const = 0;
+    virtual void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const = 0;
    
     /**
      * Normalize angles in measurement vector z
      */
     virtual void NormalizeMeasurement(VectorXd &z) const = 0;
-
-    ///* use modified measurement covariance matrix
-    const bool modified_;
 
 private:
     ///* Noise matrix
@@ -76,10 +74,10 @@ class LidarSensor : public Sensor {
 
 public:
 
-    void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S) const;
+    void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &Si, bool modified) const;
     void NormalizeMeasurement(VectorXd &) const;
  
-    LidarSensor(string name, const VectorXd& noise, bool modified);
+    LidarSensor(string name, const VectorXd& noise);
     virtual ~LidarSensor() {}
 
 };
@@ -88,10 +86,10 @@ class RadarSensor : public Sensor {
 
 public:
 
-    void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S) const;
+    void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const;
     void NormalizeMeasurement(VectorXd &) const;
 
-    RadarSensor(string name, const VectorXd& noise, bool modified);
+    RadarSensor(string name, const VectorXd& noise);
     virtual ~RadarSensor() {}
 };
 

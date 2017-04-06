@@ -10,20 +10,21 @@ using namespace std;
 /**
  * Initializes Unscented Kalman filter
  */
-UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int pred_rate, bool modified, int debug) :
+UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int spreading_factor, int pred_rate, int modified, int debug) :
     std_a_(std_a),
     std_yawdd_(std_yawdd),
+    spreading_factor_(spreading_factor),
     prediction_rate_(pred_rate),
     modified_(modified),
     debug_(debug),	
 
+    n_x_(5),
+    n_aug_(n_x_+2),
+    lambda_(spreading_factor-n_aug_),
+    n_sigma_(2*n_aug_+1),
+
     restart_(false),
     is_initialized_(false),
-
-    n_x_(5),           // TODO parametrize this to get more general solution
-    n_aug_(n_x_+2),
-    lambda_(3-n_aug_), // TODO: how is lambda defined?
-    n_sigma_(2*n_aug_+1),
 
     previous_measurement_(0),
     current_sensor_(0)
@@ -104,7 +105,7 @@ void UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
              Prediction(t);
         } catch (std::range_error e) {
             restart_ = true;
-	    // If convariance matrix is non positive definite (because of numerical instability?),
+	    // If convariance matrix is non positive definite
             // restart the filter using previous measurement as an initializer.
             InitializeMeasurement(previous_measurement_);
             // Redo prediction using the current measurement
@@ -163,7 +164,7 @@ double UnscentedKalmanFilter::Update(Measurement *m) {
   if (debug_)
       std::cout << "Update " << m->measurements_.transpose() << std::endl;
 
-  current_sensor_->PredictMeasurement(Xsig_pred_, weights_, Zsig, z_pred, S);
+  current_sensor_->PredictMeasurement(Xsig_pred_, weights_, Zsig, z_pred, S, (modified_>1)?true:false);
   UpdateState(z, z_pred, S, Xsig_pred_, Zsig, x_, P_);
   
   return m->NIS(z_pred, S);
@@ -310,6 +311,7 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
         x_diff = Xsig_pred.col(i) - Xsig_pred.col(0);
     else
         x_diff = Xsig_pred.col(i) - x;
+
     NormalizeState(x_diff);
 
     P = P + weights_(i) * x_diff * x_diff.transpose();

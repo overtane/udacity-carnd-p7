@@ -272,15 +272,16 @@ double Tools::NormalizeAngle(double a) {
  }
 ```
 
-* Algorithm modification
+## Algorithm modification
 
-(Added Apr 5th, 2017)
+### Covariance matrix calculations
 
-When lambda is negative, the state covariance matrix may not meet semi-positive definite requirement.
- 
-Added possibility to use modification from "A New Method for the Nonlinear Transformation of Means and Covariances in Filters and Estimators" by Simon Julier, Jeffrey Uhlmann, and Hugh F. Durrant-Whyte, IEEE TRANSACTIONS ON AUTOMATIC CONTROL, VOL. 45, NO. 3, MARCH 2000
+The enhancements described above were implemented in order to mitigate problems caused by non-positive semi-definite covariance matrices. However the 
+reason why the algoritm produced these 'invalid' matrices remained unknown. 
 
-Look at function `UnscentedKalmanFilter::PredictMeanAndCovariance()`: 
+In a paper **A New Method for the Nonlinear Transformation of Means and Covariances in Filters and Estimators**, *IEEE TRANSACTIONS ON AUTOMATIC CONTROL, VOL. 45, NO. 3, MARCH 2000* Julier et al. present a modification, which addresses the covariance matrix problem. The root cause to the problem is said to be  negative lambda term, that causes negativ esigma points weights. When lambda is negative, the state covariance matrix may not meet positive semi-definite requirement.  
+
+A member variable `modified_` was added to `UnscentedKalmanFilter` class and the modification was implemented in the function `UnscentedKalmanFilter::PredictMeanAndCovariance()`: 
 
 ```
 // predicted state covariance matrix
@@ -298,8 +299,86 @@ for (int i=(modified_)?1:0; i<n_sigma_; i++) {  // iterate over sigma points
 }
 ```
 
-Also, possible to apply same method to measurement covariance matrices (`Sensor` -class).
- 
-These features are available with command line options -m and -M, which set the modified flags.
- 
+The paper does not mention it, but the same modification was added to measurement covariance matrix calculation (`Sensor` -class). This was experimentally observed to
+increase algorithm's robustness.
 
+This feature is available with `-m` command line option. One `-m` adds the state covariance matrix modification and `-mm` adds  the modification to both state and measurement covariance matrix calculations.
+
+
+Examples: 
+The first run below runs into problems in Cholesky decomposition. Adding the modification, the algorithm passes without problems.
+
+```
+$ ./UnscentedKF -y 5 -a 100 -p 0 sample-laser-radar-measurement-data-2.txt out2.txt
+Sensors: Lidar Radar
+Number of measurements: 200
+Filter restarted at measurement 11
+Filter restarted at measurement 33
+Filter restarted at measurement 89
+Filter restarted at measurement 95
+Filter restarted at measurement 113
+Filter restarted at measurement 123
+Filter restarted at measurement 147
+Accuracy - RMSE:
+  0.2955
+0.289151
+ 17.8928
+ 13.4956
+Consistency - percentage above Chi^2(0.050):
+ 0.2
+0.09
+Done!
+$ ./UnscentedKF -mm -y 5 -a 100 -p 0 sample-laser-radar-measurement-data-2.txt out2.txt
+Sensors: Lidar Radar
+Number of measurements: 200
+Accuracy - RMSE:
+0.599426
+0.717348
+ 10.7083
+ 11.2521
+Consistency - percentage above Chi^2(0.050):
+0.25
+0.07
+Done!
+```
+
+### Spreading factor
+
+Spreading factor determines the lambda design parameter: `lambda = spreading factor + number of augmented sigma points`. Negative lambda is the source of invalid covariance matrices, so a possibility to adjust lambda using spreading factor was added. Spreading factor can be changed using command line option `-s`. However, it is a recommended design heuristic to have `lambda + number of augmented sigma points == 3`. So, 3 is the default value for the spreading factor.
+
+Examples:
+The first run below runs into problems in Cholesky decomposition. Changing spreading factor to 8, the algorithm passes without problems.
+
+```
+$ ./UnscentedKF -y 5 -a 100 -p 0 sample-laser-radar-measurement-data-2.txt out2.txt
+Sensors: Lidar Radar
+Number of measurements: 200
+Filter restarted at measurement 11
+Filter restarted at measurement 33
+Filter restarted at measurement 89
+Filter restarted at measurement 95
+Filter restarted at measurement 113
+Filter restarted at measurement 123
+Filter restarted at measurement 147
+Accuracy - RMSE:
+  0.2955
+0.289151
+ 17.8928
+ 13.4956
+Consistency - percentage above Chi^2(0.050):
+ 0.2
+0.09
+Done!
+$ ./UnscentedKF -s 8 -y 5 -a 100 -p 0 sample-laser-radar-measurement-data-2.txt out2.txt
+Sensors: Lidar Radar
+Number of measurements: 200
+Accuracy - RMSE:
+0.591052
+ 0.29661
+ 24.0051
+ 31.9052
+Consistency - percentage above Chi^2(0.050):
+0.67
+0.22
+Done!
+```

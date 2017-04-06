@@ -13,19 +13,34 @@ class UnscentedKalmanFilter {
 public:
 
   ///* Process noise standard deviation longitudinal acceleration in m/s^2
-  double std_a_;
+  const double std_a_;
 
   ///* Process noise standard deviation yaw acceleration in rad/s^2
-  double std_yawdd_;
+  const double std_yawdd_;
+
+  ///* Sigma point spreading factor: spreading_factor__ = lambda_ + n_aug_
+  const int spreading_factor_;
 
   ///* the minimum rate predictions are run.
-  double prediction_rate_;
+  const double prediction_rate_;
 
   ///* use modifications, false = no, true = modified state process matrix
-  bool modified_;
+  const int modified_;
 
   ///* Debugging level, 1: print intermediate phases, 2: print intermediate matrices, 3: print even more matrices
-  int debug_;
+  const int debug_;
+
+  ///* State dimension
+  const int n_x_;
+
+  ///* Augmented state dimension
+  const int n_aug_;
+
+  ///* Sigma point spreading parameter
+  const double lambda_;
+  
+  ///* Sigma points dimentsion
+  const int n_sigma_;
 
   ///* Filter restarted
   bool restart_;
@@ -33,18 +48,6 @@ public:
   ///* Previous measurement
   ///* initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
-
-  ///* State dimension
-  int n_x_;
-
-  ///* Augmented state dimension
-  int n_aug_;
-
-  ///* Sigma point spreading parameter
-  double lambda_;
-
-  ///* Sigma points dimentsion
-  int n_sigma_;
 
   Measurement *previous_measurement_;
 
@@ -71,7 +74,7 @@ public:
    * @param modified Use algorithm modifications for predicted state covariance matrix
    * @param debug Debugging level
    */
-  UnscentedKalmanFilter(double std_a, double std_yawdd, int pred_rate, bool modified, int debug);
+  UnscentedKalmanFilter(double std_a, double std_yawdd, int spreading_factor, int pred_rate, int modified, int debug);
 
   /**
    * Destructor
@@ -90,7 +93,18 @@ private:
   /**
    * Default constructor is private preventing using it outside the class
    */
-  UnscentedKalmanFilter() {}
+  UnscentedKalmanFilter() : 
+      std_a_(0.0),
+      std_yawdd_(0.0),
+      spreading_factor_(0),
+      prediction_rate_(0),
+      modified_(0),
+      debug_(0),
+      n_x_(0),
+      n_aug_(0),
+      lambda_(0.0),
+      n_sigma_(0)
+  {}
 
   /**
    * Initialize state vector and covariance matrix
