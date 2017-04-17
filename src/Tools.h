@@ -33,7 +33,7 @@ public:
   /**
    * Normalize angle to be between [-pi, pi]
    */
-  static double NormalizeAngle(double a);
+  static double NormalizeAngle(double a, int debug);
 
   /** 
    * Check model consistency values 

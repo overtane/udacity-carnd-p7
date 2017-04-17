@@ -13,13 +13,13 @@ const double Tools::PI2 = 2 * M_PI;
 #define NORM_ANGLE_LOOP
 //#define NORM_ANGLE_CEIL
 
-double Tools::NormalizeAngle(double a) {
+double Tools::NormalizeAngle(double a, int debug) {
 #if defined(NORM_ANGLE_LOOP)
     int n = 0;
     while (a > M_PI)  {a -= Tools::PI2; n++;}
     while (a < -M_PI) {a += Tools::PI2; n++;}
-    //if (n>0)
-    //    std::cout << "normalize operations: " << n  << std::endl; 
+    if (n>0 && debug)
+        std::cout << "normalize operations: " << n  << std::endl; 
     return a;
 #elif defined(NORM_ANGLE_CEIL)
     return a - ceil((a-M_PI)/(Tools::PI2))*Tools::PI2;

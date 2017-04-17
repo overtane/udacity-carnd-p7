@@ -18,7 +18,7 @@ using Eigen::VectorXd;
 using std::vector;
 
 // LOCAL FUNCTIONS
-static void parse_arguments(int argc, char* argv[]);
+static void parse_arguments(int argc, char* argv[], UnscentedKalmanFilter::UKFParameters &p);
 static void check_and_open_files(ifstream& in_file, string& in_name,
                  ofstream& out_file, string& out_name);
 
@@ -27,13 +27,16 @@ void usage() {
 	cout << "    -l - include lidar measurements" << endl;
 	cout << "    -r - include radar measurements" << endl;
 	cout << "    (omitting -l and -r includes all measurements)" << endl;
-	cout << "    -p <int> - minimum rate predictions are run, -p 0 - use measurement rate" << endl;
 	cout << "    -a <double> - stardard deviation of longitudal acceleration noise" << endl;
 	cout << "    -y <double> - standard deviation of yaw acceleration noise" << endl;
 	cout << "    -d - add some debugging output (add more d's to get more output)" << endl;
 	cout << "    -n <int> - number of measurements, use only <int> first measurements of the data" << endl;
-	cout << "    -m use modified version of the UKF algorithm for covariance matrix, -mm for extensive  modifications" << endl;
-	cout << "    -s <int> sigma point spreading factor, default = 3" << endl;
+	cout << "    -p <int> - minimum rate predictions are run (Hz), -p 0 - use measurement rate" << endl;
+	cout << "    -t filter type to use" << endl;
+	cout << "        0: Classic, 1: Modified, 2: Enhanced, 3: Scaled" << endl;
+	cout << "    -k <int> sigma point scaled factor, default == 3 for non-scaled, and == 0 for scaled filter)" << endl;
+	cout << "    -s <double> sigma point spreading factor alpha, default == 1e-3, (only for scaled filter)" << endl;
+	cout << "    -b <int> sigma point distribution factor, default == 2, (only for scaled filter" << endl;
 	cout << "    input - path to measurement input file" << endl;
 	cout << "    output - path to prediction output file" << endl;
 }
@@ -51,22 +54,17 @@ const double std_radphi = 0.03; // standard deviation angle in rad
 const double std_radrd = 0.3;   // standard deviation radius change in m/s
 
 // GLOBALS
+UnscentedKalmanFilter::UKFParameters ukf_parameters;
+
 bool use_lidar = false;      // use lidar data
 bool use_radar = false;      // use radar data
-double std_a = 2.5;          // process noise: std deviation of acceleration
-double std_yawdd = 0.8;      // process noise: std deviation of yaw
 string in_filename;          // input filename
 string out_filename;         // output filename
-int debug = 0;               // debug output level
-long n_meas = -1;            // number of measurements to use, negative value == use all
-int pred_rate = 20;          // prediction rate, 0 == use measurement interval
-int modified = 0;            // use of modified algoritm for covariance matrix calculations
-int spreading_factor = 3;    // spreading factor (n_aug + lambda)
-
+int n_meas = 0;              // number of samples to process, 0 == all
 
 int main(int argc, char* argv[]) {
 
-  parse_arguments(argc, argv);
+  parse_arguments(argc, argv, ukf_parameters);
   ifstream in_file(in_filename.c_str(), ifstream::in);
   ofstream out_file(out_filename.c_str(), ofstream::out);
   check_and_open_files(in_file, in_filename, out_file, out_filename);
@@ -78,8 +76,8 @@ int main(int argc, char* argv[]) {
   lidar_noise << std_laspy, std_laspx;
 
   // Create sensor instances
-  Sensor *radar = new RadarSensor("R", radar_noise); 
-  Sensor *lidar = new LidarSensor("L", lidar_noise); 
+  Sensor *radar = new RadarSensor("R", radar_noise, ukf_parameters.debug); 
+  Sensor *lidar = new LidarSensor("L", lidar_noise, ukf_parameters.debug); 
 
   // Create sensor collection
   //
@@ -97,7 +95,7 @@ int main(int argc, char* argv[]) {
   }
   std::cout << std::endl;
 
-  if (debug>1) {
+  if (ukf_parameters.debug>1) {
       if (use_radar) cout << "Radar covariance:\n" << radar->GetR() << endl;  
       if (use_lidar) cout << "Lidar covariance:\n" << lidar->GetR() << endl;  
   }
@@ -125,7 +123,7 @@ int main(int argc, char* argv[]) {
   in_file.close();
 
   // Create a filter instance
-  UnscentedKalmanFilter ukf(std_a, std_yawdd, spreading_factor, pred_rate, modified, debug);
+  UnscentedKalmanFilter ukf(ukf_parameters);
 
   // Run measurement through the filter and get estimations
   MeasurementContainer::iterator it;
@@ -133,7 +131,7 @@ int main(int argc, char* argv[]) {
   for(it=measurements.begin(), i=0; it!=measurements.end(); it++, i++) {
 
     Measurement *m = *it;
-    if (debug)
+    if (ukf_parameters.debug)
         std::cout << "--- START MEASUREMENT: " << i << " -------------------------------" << std::endl;
 
     ukf.ProcessMeasurement(m);
@@ -157,11 +155,26 @@ int main(int argc, char* argv[]) {
 
 
 
-void parse_arguments(int argc, char* argv[]) {
+void parse_arguments(int argc, char* argv[], UnscentedKalmanFilter::UKFParameters &p) {
  
     int opt;
 
-    while ((opt = getopt(argc, argv, "s:mMp:n:dDlra:y:")) != -1) {
+    p.std_a = 2.5;          // process noise: std deviation of acceleration
+    p.std_yawdd = 0.8;      // process noise: std deviation of yaw
+    p.pred_rate = 20;       // prediction rate, 0 == use measurement interval
+    p.debug = 0;            // debug output level
+
+    p.type = UnscentedKalmanFilter::UKFClassic;
+
+    p.beta = 2;
+    p.alpha = 1e-3;
+    p.k = 0;
+
+    n_meas = -1;            // number of measurements to use, negative value == use all
+
+    bool k_given = false;
+
+    while ((opt = getopt(argc, argv, "s:b:k:t:p:n:dlra:y:")) != -1) {
         switch (opt) {
         case 'l':
             use_lidar = true;
@@ -169,26 +182,33 @@ void parse_arguments(int argc, char* argv[]) {
         case 'r':
             use_radar = true;
             break;
-        case 'm':
-            modified++;
+        case 't':
+	    p.type = (UnscentedKalmanFilter::UKFType)atoi(optarg);
             break;
         case 'd':
-            debug++;
+            p.debug++;
             break;
-        case 's':
-	    spreading_factor = atoi(optarg);
+        case 'k':
+	    p.k = atoi(optarg);
+            k_given = true;
+	    break;
+        case 'b':
+	    p.beta = atoi(optarg);
             break;
         case 'p':
-	    pred_rate = atoi(optarg);
+	    p.pred_rate = atoi(optarg);
             break;
         case 'n':
 	    n_meas = atoi(optarg);
             break;
+        case 's':
+	    p.alpha = atof(optarg);
+            break;
         case 'a':
-	    std_a = atof(optarg);
+	    p.std_a = atof(optarg);
             break;
         case 'y':
-	    std_yawdd = atof(optarg);
+	    p.std_yawdd = atof(optarg);
             break;
         default: /* '?' */
 	    usage();
@@ -196,16 +216,22 @@ void parse_arguments(int argc, char* argv[]) {
         }
     }
 
+    if (p.type < UnscentedKalmanFilter::UKFClassic || p.type > UnscentedKalmanFilter::UKFScaled)
+        p.type = UnscentedKalmanFilter::UKFClassic;
+
+    if (!k_given)
+        p.k = (p.type != UnscentedKalmanFilter::UKFScaled) ? 3 : 0;
+
     if (!use_lidar && !use_radar)
 	    use_lidar = use_radar = true;
 
-    if (debug) {
+    if (p.debug) {
         cout << "lidar: "    << use_lidar 
              << " radar: "   << use_radar 
-             << " std_a: "   << std_a
-	     << " std_yawdd: " << std_yawdd 
+             << " std_a: "   << p.std_a
+	     << " std_yawdd: " << p.std_yawdd 
 	     << " measurements: " << n_meas
-	     << " debug: " << debug
+	     << " debug: " << p.debug
 	     << endl;
     }
 
@@ -217,8 +243,8 @@ void parse_arguments(int argc, char* argv[]) {
     in_filename  = argv[optind];
     out_filename = argv[optind+1];
 
-    if (debug) {
-         cout << "in file: "  << in_filename  << endl;
+    if (p.debug) {
+        cout << "in file: "  << in_filename  << endl;
         cout << "out file: " << out_filename << endl;
     }
 }

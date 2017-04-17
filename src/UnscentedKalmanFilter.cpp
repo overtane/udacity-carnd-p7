@@ -10,17 +10,18 @@ using namespace std;
 /**
  * Initializes Unscented Kalman filter
  */
-UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int spreading_factor, int pred_rate, int modified, int debug) :
-    std_a_(std_a),
-    std_yawdd_(std_yawdd),
-    spreading_factor_(spreading_factor),
-    prediction_rate_(pred_rate),
-    modified_(modified),
-    debug_(debug),	
+UnscentedKalmanFilter::UnscentedKalmanFilter(const UnscentedKalmanFilter::UKFParameters &p) :
+    std_a_(p.std_a),
+    std_yawdd_(p.std_yawdd),
+    debug_(p.debug),
+    pred_rate_(p.pred_rate),
+    type_(p.type),
+    k_(p.k),
+    alpha_(p.alpha),
+    beta_(p.beta),
 
     n_x_(5),
     n_aug_(n_x_+2),
-    lambda_(spreading_factor-n_aug_),
     n_sigma_(2*n_aug_+1),
 
     restart_(false),
@@ -37,17 +38,47 @@ UnscentedKalmanFilter::UnscentedKalmanFilter(double std_a, double std_yawdd, int
 
   Xsig_pred_ = MatrixXd(n_x_, n_sigma_); 
 
-  // set weights
-  weights_ = VectorXd(n_sigma_);
-  weights_(0)= lambda_/(lambda_+n_aug_);
-  for (int i=1; i<n_sigma_; i++) {  //2n+1 weights
-    weights_(i) = .5/(n_aug_+lambda_);
-  }
+  if (type_ != UKFScaled) {
   
+      // set weights for classic style of UKF
+
+      lambda_ = k_ - n_aug_;
+
+      weights_m_ = VectorXd(n_sigma_);
+      
+      weights_m_(0)= lambda_ / (lambda_+n_aug_);
+      
+      for (int i=1; i<n_sigma_; i++) {  //2n+1 weights
+          weights_m_(i) = .5/(n_aug_+lambda_);
+      }
+
+      weights_c_ = weights_m_;
+
+  } else {
+
+      // set weights for scaled type of UKF
+
+      lambda_ = alpha_*alpha_*(n_aug_+k_) - n_aug_;
+  
+      weights_m_ = VectorXd(n_sigma_);
+      weights_c_ = VectorXd(n_sigma_);
+
+      weights_m_(0) = lambda_/(lambda_+n_aug_);
+      weights_c_(0) = lambda_/(lambda_+n_aug_) + (1-alpha_*alpha_ + beta_);
+
+      for (int i=1; i<n_sigma_; i++) {  // 2n+1 weights
+          weights_m_(i) = weights_c_(i) = .5/(n_aug_+lambda_);
+      }
+  }
+
+  if (debug_ > 0) { 
+      std::cout << "Weights m:\n" << weights_m_.transpose() << std::endl;
+      std::cout << "Weights c:\n" << weights_c_.transpose() << std::endl;
+  }
 }
 
 void UnscentedKalmanFilter::NormalizeState(VectorXd &x) const {
-    x(3) = Tools::NormalizeAngle(x(3));
+    x(3) = Tools::NormalizeAngle(x(3), debug_);
 }
 
 void UnscentedKalmanFilter::InitializeMeasurement(const Measurement *m) {
@@ -95,7 +126,7 @@ void UnscentedKalmanFilter::ProcessMeasurement(Measurement *m) {
   // Compute the time elapsed between the current and previous measurements, in seconds
     double dt = (m->timestamp_ - previous_measurement_->timestamp_) / 1000000.0;	
     double rdt = dt; // remaining delta time
-    double pred_int = (prediction_rate_>0) ? 1.0/prediction_rate_ : rdt; // prediction_interval
+    double pred_int = (pred_rate_>0) ? 1.0/pred_rate_ : rdt; // prediction_interval
 
     do {
   
@@ -164,7 +195,7 @@ double UnscentedKalmanFilter::Update(Measurement *m) {
   if (debug_)
       std::cout << "Update " << m->measurements_.transpose() << std::endl;
 
-  current_sensor_->PredictMeasurement(Xsig_pred_, weights_, Zsig, z_pred, S, (modified_>1)?true:false);
+  current_sensor_->PredictMeasurement(Xsig_pred_, weights_m_, weights_c_, Zsig, z_pred, S, (type_==UKFEnhanced)?true:false);
   UpdateState(z, z_pred, S, Xsig_pred_, Zsig, x_, P_);
   
   return m->NIS(z_pred, S);
@@ -298,23 +329,24 @@ void UnscentedKalmanFilter::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, 
 
   // predicted state mean
   for (int i=0; i<n_sigma_; i++) {  // iterate over sigma points
-      x = x + weights_(i) * Xsig_pred.col(i);
+      x += weights_m_(i) * Xsig_pred.col(i);
+      //std::cout << i << std::fixed << ": " << x.transpose() << std::endl;
   }
   NormalizeState(x);
 
   // predicted state covariance matrix
-  for (int i=(modified_)?1:0; i<n_sigma_; i++) {  // iterate over sigma points
+  for (int i=(type_==UKFModified||type_==UKFEnhanced)?1:0; i<n_sigma_; i++) {  // iterate over sigma points
 
     // state difference
     VectorXd x_diff;
-    if (modified_)
+    if (type_==UKFModified||type_==UKFEnhanced)
         x_diff = Xsig_pred.col(i) - Xsig_pred.col(0);
     else
         x_diff = Xsig_pred.col(i) - x;
 
     NormalizeState(x_diff);
 
-    P = P + weights_(i) * x_diff * x_diff.transpose();
+    P = P + weights_c_(i) * x_diff * x_diff.transpose();
   }
 
   if (debug_ > 2) {
@@ -346,7 +378,7 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
        VectorXd x_diff = Xsig_pred.col(i) - x;
        NormalizeState(x_diff);
 
-       Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
+       Tc = Tc + weights_c_(i) * x_diff * z_diff.transpose();
    }
 
    // Kalman gain K;
@@ -365,7 +397,7 @@ void UnscentedKalmanFilter::UpdateState(const VectorXd &z, const VectorXd &z_pre
        std::cout << "Update done:" << endl;
        std::cout << "z:\n" << z.transpose() << std::endl;
        std::cout << "z_pred:\n" << z_pred.transpose() << std::endl;
-       std::cout << "Xsig_pred:\n" << Xsig_pred << std::endl;
+       std::cout << std::fixed << "Xsig_pred:\n" << Xsig_pred << std::endl;
        std::cout << "Zsig:\n" << Zsig << std::endl;
        std::cout << "Tc:\n" << Tc << std::endl;
        std::cout << "S:\n" << S << std::endl;

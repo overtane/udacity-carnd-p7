@@ -28,7 +28,7 @@ public:
     /**
      * Constructor
      */
-    Sensor(string name, const VectorXd& noise, int df);
+    Sensor(string name, const VectorXd& noise, int df, int debug);
     /**
      * Destructor
      */
@@ -39,6 +39,9 @@ public:
 
     ///* Degrees of freedom, for consistency calculations
     const int df_;
+
+    ///* Debug output flag
+    const int debug_;
 
 protected:
 
@@ -55,7 +58,8 @@ protected:
      * @param S Measurement covariance matrix (output)
      * @modified Use modified algorithm for covariance matrix
      */
-    virtual void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const = 0;
+    virtual void PredictMeasurement(const MatrixXd &Xsig_pred, const VectorXd &weights_m, const VectorXd &weights_c, // inputs
+		                    MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const = 0;         // outputs
    
     /**
      * Normalize angles in measurement vector z
@@ -74,10 +78,11 @@ class LidarSensor : public Sensor {
 
 public:
 
-    void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &Si, bool modified) const;
+    void PredictMeasurement(const MatrixXd &Xsig_pred, const VectorXd &weights_m, const VectorXd &weights_c, // inputs
+		            MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &Si, bool modified) const;            // outputs
     void NormalizeMeasurement(VectorXd &) const;
  
-    LidarSensor(string name, const VectorXd& noise);
+    LidarSensor(string name, const VectorXd& noise, int debug);
     virtual ~LidarSensor() {}
 
 };
@@ -86,10 +91,11 @@ class RadarSensor : public Sensor {
 
 public:
 
-    void PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const;
+    void PredictMeasurement(const MatrixXd &Xsig_pred, const VectorXd &weights_m, const VectorXd &weights_c, // inputs
+		            MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const;             // outputs
     void NormalizeMeasurement(VectorXd &) const;
 
-    RadarSensor(string name, const VectorXd& noise);
+    RadarSensor(string name, const VectorXd& noise, int debug);
     virtual ~RadarSensor() {}
 };
 

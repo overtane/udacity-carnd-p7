@@ -8,9 +8,10 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::string;
 
-Sensor::Sensor(string name, const VectorXd& noise, int df) :
+Sensor::Sensor(string name, const VectorXd& noise, int df, int debug) :
 	name_(name),
-	df_(df)
+	df_(df),
+	debug_(debug)
 {
     SetR(noise);
 }
@@ -27,15 +28,16 @@ const MatrixXd &Sensor::GetR() const {
     return R_;
 }
 
-LidarSensor::LidarSensor(string name, const VectorXd& noise) :
-        Sensor(name, noise, 2)
+LidarSensor::LidarSensor(string name, const VectorXd& noise, int debug) :
+        Sensor(name, noise, 2, debug)
 {}
 
 void LidarSensor::NormalizeMeasurement(VectorXd &x) const {
     (void) x;
 }
 
-void LidarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const {
+void LidarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const VectorXd &weights_m, const VectorXd &weights_c,
+		                     MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const {
 
     int n_z = z_pred.rows();
     int n_sigma = Zsig.cols();
@@ -51,7 +53,7 @@ void LidarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &
 	Zsig(1,i) = Xsig_pred(1,i);
 
         // add to mean predicted measurement
-        z_pred = z_pred + weights(i) * Zsig.col(i);
+        z_pred = z_pred + weights_m(i) * Zsig.col(i);
     }
 
     // measurement covariance matrix S
@@ -63,22 +65,23 @@ void LidarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &
 	else
 	    z_diff = Zsig.col(i) - z_pred;
 
-        S = S + weights(i) * z_diff * z_diff.transpose();
+        S = S + weights_c(i) * z_diff * z_diff.transpose();
     }
 
     S = S + GetR();
 }
 
 
-RadarSensor::RadarSensor(string name, const VectorXd& noise) :
-        Sensor(name, noise, 3)
+RadarSensor::RadarSensor(string name, const VectorXd& noise, int debug) :
+        Sensor(name, noise, 3, debug)
 {}
 
 void RadarSensor::NormalizeMeasurement(VectorXd &x) const {
-    x(1) = Tools::NormalizeAngle(x(1));
+    x(1) = Tools::NormalizeAngle(x(1), debug_);
 }
 
-void RadarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &weights, MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const {
+void RadarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const VectorXd &weights_m, const VectorXd &weights_c,
+		                     MatrixXd &Zsig, VectorXd &z_pred, MatrixXd &S, bool modified) const {
 
   int n_z = z_pred.rows();
   int n_sigma = Zsig.cols();
@@ -108,7 +111,7 @@ void RadarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &
         Zsig(2,i) = (px*v1 + py*v2) / Zsig(0,i); // r_dot
 
         // add column to mean predicted measurement
-        z_pred = z_pred + weights(i) * Zsig.col(i);
+        z_pred = z_pred + weights_m(i) * Zsig.col(i);
     }
 
     // measurement covariance matrix S
@@ -120,9 +123,9 @@ void RadarSensor::PredictMeasurement(const MatrixXd &Xsig_pred, const MatrixXd &
 	else
 	    z_diff = Zsig.col(i) - z_pred;
 
-        z_diff(1) = Tools::NormalizeAngle(z_diff(1));
+        z_diff(1) = Tools::NormalizeAngle(z_diff(1), debug_);
 
-        S = S + weights(i) * z_diff * z_diff.transpose();
+        S = S + weights_c(i) * z_diff * z_diff.transpose();
     }
 
     S = S + GetR();

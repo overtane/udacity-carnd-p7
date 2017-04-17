@@ -12,23 +12,42 @@ class UnscentedKalmanFilter {
 
 public:
 
+  enum UKFType { UKFClassic = 0, UKFModified, UKFEnhanced, UKFScaled };
+
+  struct UKFParameters {
+      double std_a;
+      double std_yawdd;
+      int debug;
+      double pred_rate;
+      UKFType type;
+      int k;
+      double alpha;
+      int beta;
+  };
+ 
   ///* Process noise standard deviation longitudinal acceleration in m/s^2
   const double std_a_;
 
   ///* Process noise standard deviation yaw acceleration in rad/s^2
   const double std_yawdd_;
 
-  ///* Sigma point spreading factor: spreading_factor__ = lambda_ + n_aug_
-  const int spreading_factor_;
-
   ///* the minimum rate predictions are run.
-  const double prediction_rate_;
-
-  ///* use modifications, false = no, true = modified state process matrix
-  const int modified_;
+  const double pred_rate_;
 
   ///* Debugging level, 1: print intermediate phases, 2: print intermediate matrices, 3: print even more matrices
   const int debug_;
+
+  ///* type of the filter to use
+  const UKFType type_;
+
+  ///* Sigma point secondary scaling parameter:
+  const int k_;
+
+  ///* Sigma point spreading factor 
+  const double alpha_;
+
+  ///* Distribution factor
+  const int beta_;
 
   ///* State dimension
   const int n_x_;
@@ -36,12 +55,14 @@ public:
   ///* Augmented state dimension
   const int n_aug_;
 
-  ///* Sigma point spreading parameter
-  const double lambda_;
-  
-  ///* Sigma points dimentsion
+  ///* Sigma points dimension
   const int n_sigma_;
 
+  ///* Sigma point scaling parameter
+  ///* Normally:  lambda_  = k_ - n_aug_
+  ///* Scaled:    lambda_ = alpha^2 * (n_aug_ * k_) - n_aug_
+  double lambda_;
+  
   ///* Filter restarted
   bool restart_;
 
@@ -55,7 +76,8 @@ public:
   const Sensor *current_sensor_;
 
   ///* Weights of sigma points
-  VectorXd weights_;
+  VectorXd weights_m_; ///* weights for mean state vector
+  VectorXd weights_c_; ///* wieghts for covariance matrix
 
   ///* state vector: [pos1 pos2 vel_abs yaw_angle yaw_rate] in SI units and rad
   VectorXd x_;
@@ -68,13 +90,9 @@ public:
 
   /**
    * Constructor
-   * @param std_a Process noise standard deviation longitudinal acceleration in m/s^2
-   * @param std_yawdd Process noise standard deviation yaw acceleration in rad/s^2
-   * @param pred_rate Minimum rate to run predictions
-   * @param modified Use algorithm modifications for predicted state covariance matrix
-   * @param debug Debugging level
+   * @param p Initialization parameters
    */
-  UnscentedKalmanFilter(double std_a, double std_yawdd, int spreading_factor, int pred_rate, int modified, int debug);
+  UnscentedKalmanFilter(const UKFParameters &p);
 
   /**
    * Destructor
@@ -96,10 +114,12 @@ private:
   UnscentedKalmanFilter() : 
       std_a_(0.0),
       std_yawdd_(0.0),
-      spreading_factor_(0),
-      prediction_rate_(0),
-      modified_(0),
+      pred_rate_(0),
       debug_(0),
+      type_(UKFClassic),
+      k_(0),
+      alpha_(0.0),
+      beta_(0),
       n_x_(0),
       n_aug_(0),
       lambda_(0.0),
